@@ -5,7 +5,13 @@ VisualStudioVersion = 16.0.33130.400
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DamageDisplay", "DamageDisplay\DamageDisplay.csproj", "{8A1C629B-9D8B-4B72-8997-F6DD8BE31EC6}"
 EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SEUtils", "..\SEUtils\SEUtils\SEUtils.shproj", "{61EBA249-19F3-48B6-A25B-A4CEE90168BA}"
+EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		..\SEUtils\SEUtils\SEUtils.projitems*{61eba249-19f3-48b6-a25b-a4cee90168ba}*SharedItemsImports = 13
+		..\SEUtils\SEUtils\SEUtils.projitems*{8a1c629b-9d8b-4b72-8997-f6dd8be31ec6}*SharedItemsImports = 4
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
 	EndGlobalSection
