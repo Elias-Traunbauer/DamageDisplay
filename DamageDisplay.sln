@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.33130.400
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DamageDisplay", "DamageDisplay\DamageDisplay.csproj", "{8A1C629B-9D8B-4B72-8997-F6DD8BE31EC6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8A1C629B-9D8B-4B72-8997-F6DD8BE31EC6}.Debug|x64.ActiveCfg = Debug|x64
+		{8A1C629B-9D8B-4B72-8997-F6DD8BE31EC6}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7AFD3217-C52E-4A8E-B74B-6272C354CD0D}
+	EndGlobalSection
+EndGlobal
