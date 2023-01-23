@@ -26,7 +26,7 @@ namespace IngameScript
         SEUtils _seu;
         MyIni _ini;
         float localVertexMultiplier;
-        Dictionary<Vector3, GridBlock> _gridBlocks;
+        SortedDictionary<Vector3, GridBlock> _gridBlocks;
         Dictionary<TextPanelRenderingContext, List<LCDWithRotation>> _textPanelRenderingContexts = new Dictionary<TextPanelRenderingContext, List<LCDWithRotation>>();
         MySprite PixelSprite = new MySprite()
         {
@@ -80,7 +80,7 @@ namespace IngameScript
                         string[] numbers = vectorString.Split(' ').Select(x => x.Split(':')[1]).ToArray();
                         if (ID == currentID)
                         {
-                            lcds.Add(new LCDWithRotation() { TextPanel = item, Rotation = new Vector3(float.Parse(numbers[0]), float.Parse(numbers[1]), float.Parse(numbers[2])) });
+                            lcds.Add(new LCDWithRotation() { TextPanel = item, Rotation = new Vector3(MathHelper.ToRadians(float.Parse(numbers[0])), MathHelper.ToRadians(float.Parse(numbers[1])), MathHelper.ToRadians(float.Parse(numbers[2]))) });
                         }
                     }
                 }
@@ -89,6 +89,8 @@ namespace IngameScript
                     _ini.AddSection(INI_SECTION_HEADER);
                     _ini.SetSectionComment(INI_SECTION_HEADER, "Configuration for damage display");
                     _ini.Set(INI_SECTION_HEADER, "Display_ID", "main");
+                    _ini.Set(INI_SECTION_HEADER, "Display_type", "3D");
+                    _ini.SetComment(INI_SECTION_HEADER, "Display_type", "Options: [3D|2D]");
                     _ini.Set(INI_SECTION_HEADER, "View_rotation", new Vector3().ToString());
                     item.CustomData = _ini.ToString();
                 }
@@ -119,7 +121,7 @@ namespace IngameScript
             int id = _seu.StartCoroutine(GatherShipInfo());
             //yield return new WaitForNextTick();
             yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), 5000, 1000, () => { Echo("Script start timeouted"); return false; });
-            
+
             // start main coroutine
             _seu.StartCoroutine(Main());
         }
@@ -131,7 +133,20 @@ namespace IngameScript
                 Echo("Rendering...");
                 // Rendering current info
                 {
-                    var blocksToRender = _gridBlocks.Where(x => IsOutside(x.Value) && !x.Value.IsAir);
+                    var blocksToRender = new HashSet<MyTuple<Vector3, GridBlock>>();
+                    foreach (var item in _gridBlocks)
+                    {
+                        if (!item.Value.IsAir)
+                        {
+
+                        }
+
+                        loopCount++;
+                        if (loopCount >= maxLoopCount)
+                        {
+                            yield return new WaitForNextTick();
+                        }
+                    }
                     List<Vector3> verticiesToRender = new List<Vector3>();
                     int i = 0;
                     foreach (var block in blocksToRender)
@@ -210,7 +225,7 @@ namespace IngameScript
             // maxFarOut * x = 2.4f -> 2.4f / maxFarOut = x
             float maxFarOut = gridSize.Max() / 2;
             localVertexMultiplier = 2.4f / maxFarOut;
-            _gridBlocks = new Dictionary<Vector3, GridBlock>();
+            _gridBlocks = new SortedDictionary<Vector3, GridBlock>();
             for (int x = 0; x < gridSize.X; x++)
             {
                 for (int y = 0; y < gridSize.Y; y++)
@@ -239,6 +254,26 @@ namespace IngameScript
                 if (_gridBlocks.ContainsKey(item + block.Position) && _gridBlocks[block.Position + item].IsAir)
                     return true;
             }
+            return false;
+        }
+
+        bool Raycast(Vector3 origin, Vector3 dir, float length, Matrix rot, out int instructions, float stepSize = 0.3f)
+        {
+            float currentLength = 0;
+            int ins = 0;
+            while (currentLength <= length)
+            {
+                ins++;
+                currentLength += stepSize;
+                var checkPos = origin + dir * currentLength;
+                if (_gridBlocks.Where(x => Vector3.Distance(x.Key, checkPos) <= GridBlock.BlockSizeHalf * 1.3f).Any(x => x.Value.Mesh(rot).PointIntersects(checkPos)))
+                {
+                    instructions = ins;
+                    return true;
+                }
+            }
+            dir.Normalize();
+            instructions = ins;
             return false;
         }
 
@@ -350,6 +385,46 @@ namespace IngameScript
         }
     }
 
+    public class CubeMesh
+    {
+        public Matrix Rotation;
+        private SortedSet<Vector3> _vertices = new SortedSet<Vector3>();
+        public Vector3[] Vertices
+        {
+            get
+            {
+                return _vertices.ToArray();
+            }
+            set
+            {
+                _vertices.Clear();
+                foreach (var item in value)
+                {
+                    _vertices.Add(item);
+                }
+                Min = _vertices.First();
+                Max = _vertices.Last();
+            }
+        }
+        public Vector3 Min;
+        public Vector3 Max;
+
+        public bool PointIntersects(Vector3 pos)
+        {
+            return IsBigger(pos, Min) && IsSmaller(pos, Max);
+        }
+
+        public bool IsBigger(Vector3 v1, Vector3 v2)
+        {
+            return v1.X > v2.X && v1.Y > v2.Y && v1.Z > v2.Z;
+        }
+
+        public bool IsSmaller(Vector3 v1, Vector3 v2)
+        {
+            return v1.X < v2.X && v1.Y < v2.Y && v1.Z < v2.Z;
+        }
+    }
+
     public class LCDWithRotation
     {
         public IMyTextPanel TextPanel;
@@ -361,6 +436,20 @@ namespace IngameScript
         public Vector3 Position { get; set; }
         public IMySlimBlock SlimBlock { get; set; }
         public IMyTerminalBlock TerminalBlock { get; set; }
+        private int LastMeshHash { get; set; }
+        private CubeMesh _mesh;
+        private Matrix rot;
+        public CubeMesh Mesh(Matrix rotation)
+        {
+            if (LastMeshHash == GetHashCode() || rot != rotation)
+            {
+                _mesh = new CubeMesh();
+                _mesh.Rotation = rotation;
+                _mesh.Vertices = Vertices.ToArray();
+                rot = rotation;
+            }
+            return _mesh;
+        }
         public bool Exists { get; set; }
         public bool IsOutside;
 
@@ -417,6 +506,11 @@ namespace IngameScript
             Damaged = 1 ^ 2,
             NotWorking = 2 ^ 2,
             Missing = 3 ^ 2
+        }
+
+        public override int GetHashCode()
+        {
+            return Position.GetHashCode();
         }
     }
 }
