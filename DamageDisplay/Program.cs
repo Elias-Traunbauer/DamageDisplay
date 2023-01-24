@@ -97,7 +97,7 @@ namespace IngameScript
                 }
                 _ini.Clear();
             }
-            // remove reference to temp list
+
             var uniqueLcdTypes = lcds.GroupBy(x => x.TextPanel.BlockDefinition.SubtypeId + x.Rotation.ToString());
             _textPanelRenderingContexts = uniqueLcdTypes.Select(x => new { CTX = new TextPanelRenderingContext(x.First().TextPanel, Vector3D.Backward), LCDs = x.ToList() }).ToDictionary(x => x.CTX, y => y.LCDs);
             allLCDsOnGrid = null;
@@ -141,22 +141,25 @@ namespace IngameScript
                 }
                 Echo("Rendering...");
                 rotEl += 0.01f;
+                rotEl = MathHelper.WrapAngle(rotEl);
                 Vector3 forward = Vector3.Forward * 10;
                 CubeMesh m = new CubeMesh();
                 m.Rotation = Matrix.CreateRotationY(rotEl);
-                m.Triangles = GridBlock.Lines;
-                m.Vertices = GridBlock.Vertices.ToArray();
+                m.Triangles = GridBlock.ExampleCubeLines;
+                m.Vertices = GridBlock.ExampleCubeVertices.ToArray();
                 Echo($"Rendering {m.Vertices.Count()} vertices");
                 foreach (var context in _textPanelRenderingContexts)
                 {
                     foreach (var lcd in context.Value)
                     {
                         var df = lcd.TextPanel.DrawFrame();
-                        var vertices = m.Vertices;
-                        for (int i = 0; i < m.Triangles.Length / 2; i+=2)
+                        var vertices = m.Vertices.ToList();
+                        Echo(vertices.Count() + " len");
+                        for (int i = 0; i < Math.Floor(m.Triangles.Length / 2f); i+=2)
                         {
-                            var firstVertex = vertices[i] + forward;
-                            var secondVertex = vertices[i+1] + forward;
+                            Echo(i + " i");
+                            var firstVertex = vertices[m.Triangles[i]] + forward;
+                            var secondVertex = vertices[m.Triangles[i+1]] + forward;
                             var projectedPoint1 = context.Key.ProjectLocalPoint(firstVertex);
                             var projectedPoint2 = context.Key.ProjectLocalPoint(secondVertex);
 
@@ -427,7 +430,7 @@ namespace IngameScript
             {
                 _mesh = new CubeMesh();
                 _mesh.Rotation = rotation;
-                _mesh.Vertices = Vertices.ToArray();
+                _mesh.Vertices = ExampleCubeVertices.ToArray();
                 rot = rotation;
             }
             return _mesh;
@@ -471,7 +474,7 @@ namespace IngameScript
             new Vector3(0, 0, -1)
         };
 
-        public static List<Vector3> Vertices = new List<Vector3>() {
+        public static List<Vector3> ExampleCubeVertices = new List<Vector3>() {
             new Vector3(BlockSizeHalf, BlockSizeHalf, BlockSizeHalf), // 0
             new Vector3(-BlockSizeHalf, BlockSizeHalf, BlockSizeHalf),// 1
             new Vector3(BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),// 2
@@ -482,11 +485,20 @@ namespace IngameScript
             new Vector3(-BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf)// 7
         };
 
-        public static int[] Lines = new int[]
+        public static int[] ExampleCubeLines = new int[]
         {
             0,1,
-            1,3,
+            0,2,
+            2,4,
+            4,1,
+            4,5,
+            5,6,
+            6,2,
+            0,3,
+            6,3,
             7,3,
+            7,1,
+            5,7
         };
 
         public enum GridBlockStatus
