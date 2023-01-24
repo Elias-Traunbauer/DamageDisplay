@@ -144,7 +144,7 @@ namespace IngameScript
                 rotEl = MathHelper.WrapAngle(rotEl);
                 rotOl += 0.005f;
                 rotOl = MathHelper.WrapAngle(rotOl);
-                Vector3 forward = Vector3.Forward * 5;
+                Vector3 forward = Vector3.Forward * 8;
                 CubeMesh m = new CubeMesh();
                 m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
                 m.Triangles = GridBlock.ExampleCubeLines;
@@ -166,6 +166,15 @@ namespace IngameScript
                         //df.Add(PixelSprite);
                         //PixelSprite.Size = new Vector2(1, 1);
                         //df.Add(DrawLine(start, end));
+
+                        // triangle test
+                        Vector2 p1 = new Vector2(30, 100);
+                        Vector2 p2 = new Vector2(130, 100);
+                        Vector2 p3 = new Vector2(60, 50);
+                        FillTriangle(p1, p2, p3, df);
+                        PixelSprite.Size = new Vector2(4, 4);
+                        PixelSprite.Color = Color.Red;
+                        //PixelSprite.Color = Color.White;
 
                         var vertices = m.Vertices.ToList();
                         foreach (var item in vertices)
@@ -203,21 +212,118 @@ namespace IngameScript
             }
         }
 
+        float GetRotation(Vector2 dir)
+        {
+            float az, el;
+            Vector3.GetAzimuthAndElevation(new Vector3(-dir.X, 0, dir.Y), out az, out el);
+            return az;
+        }
+
         MySprite DrawLine(Vector2 start, Vector2 end)
         {
             MySprite sp = new MySprite();
+            sp.Type = SpriteType.TEXTURE;
+            sp.Data = "SquareSimple";
             Vector2 dir = end - start;
             float len = dir.Length();
             Vector2 size = new Vector2(1, len);
             dir.Normalize();
-            sp.Type = SpriteType.TEXTURE;
-            sp.Data = "SquareSimple";
             sp.Position = start + dir * (len / 2);
             sp.Size = size;
             float az, el;
             Vector3.GetAzimuthAndElevation(new Vector3(-dir.X, 0, dir.Y), out az, out el);
             sp.RotationOrScale = az;
             return sp;
+        }
+
+        void FillTriangle(Vector2 p1, Vector2 p2, Vector2 p3, MySpriteDrawFrame df)
+        {
+            // clock https://stackoverflow.com/questions/1165647/how-to-determine-if-a-list-of-polygon-points-are-in-clockwise-order#:~:text=Here's%20a%20simple%20one%20that,the%20curve%20is%20counter%2Dclockwise.
+            MySprite sp = new MySprite();
+            sp.Type = SpriteType.TEXTURE;
+            sp.Data = "RightTriangle";
+
+            // 1st line: p1->p2
+            // 2nd line: p2->p3
+            // 3rd line: p1->p3
+
+            float[] lineLengths = new float[] { Vector2.Distance(p1, p2), Vector2.Distance(p2, p3), Vector2.Distance(p1, p3) };
+
+            Vector2 origin;
+            Vector2 originOpposite;
+            Vector2 hypotenuseDir;
+            Vector2 hypotenuseNormalized;
+            Vector2 externalPoint;
+            float maxLineLength = lineLengths.Max();
+
+            if (maxLineLength == lineLengths[0])
+            {
+                // 1st line hyp
+                origin = p1;
+                originOpposite = p2;
+                hypotenuseDir = p2 - p1;
+                externalPoint = p3;
+            }
+            else if (maxLineLength == lineLengths[1])
+            {
+                // 2nd line hyp
+                origin = p2;
+                originOpposite = p3;
+                hypotenuseDir = p3 - p2;
+                externalPoint = p1;
+            }
+            else
+            {
+                // 3rd line hyp
+                origin = p3;
+                originOpposite = p1;
+                hypotenuseDir = p1 - p3;
+                externalPoint = p2;
+            }
+            hypotenuseNormalized = Vector2.Normalize(hypotenuseDir);
+
+            Vector2 triangleAnchor;
+            Vector2 originToExternalPoint = externalPoint - origin;
+            float dotP = Vector2.Dot(originToExternalPoint, hypotenuseNormalized);
+            triangleAnchor = origin + hypotenuseNormalized * dotP;
+            Echo("dotP " + dotP);
+            PixelSprite.Position = p3;
+            df.Add(PixelSprite);
+            float baseRot = -MathHelper.Pi / 2f;
+
+            PixelSprite.Color = Color.Red;
+            PixelSprite.Position = origin;
+            df.Add(PixelSprite);
+            PixelSprite.Color = Color.Yellow;
+            PixelSprite.Position = originOpposite;
+            df.Add(PixelSprite);
+            PixelSprite.Color = Color.White;
+            PixelSprite.Position = externalPoint;
+            df.Add(PixelSprite);
+
+            // first triangle
+            Vector2 dir = triangleAnchor - origin;
+            Vector2 exDir = externalPoint - origin;
+            float rot = GetRotation(dir) + baseRot;
+            Vector2 size = new Vector2();
+            size.X = dir.Length();
+            size.Y = (externalPoint - triangleAnchor).Length();
+            sp.Position = origin + exDir / 2;
+            sp.RotationOrScale = rot;
+            sp.Color = Color.Blue;
+            df.Add(sp);
+
+            // second triangle
+            dir = triangleAnchor - originOpposite;
+            exDir = externalPoint - originOpposite;
+            rot = GetRotation(dir) + baseRot;
+            size = new Vector2();
+            size.X = dir.Length();
+            size.Y = (externalPoint - triangleAnchor).Length();
+            sp.Position = originOpposite + exDir / 2;
+            sp.RotationOrScale = rot;
+            sp.Color = Color.LightBlue;
+            df.Add(sp);
         }
 
         IEnumerator GatherShipInfo()
@@ -251,45 +357,6 @@ namespace IngameScript
             //    }
             //}
             //Echo("Gathered all blocks");
-        }
-
-        bool IsOutside(GridBlock block)
-        {
-            foreach (var item in GridBlock.NeighbourBlocksGrid)
-            {
-                if (_gridBlocks.ContainsKey(item + block.Position) && _gridBlocks[block.Position + item].IsAir)
-                    return true;
-            }
-            return false;
-        }
-
-        bool Raycast(Vector3 origin, Vector3 dir, float length, Matrix rot, out int instructions, float stepSize = 0.3f)
-        {
-            float currentLength = 0;
-            int ins = 0;
-            while (currentLength <= length)
-            {
-                ins++;
-                currentLength += stepSize;
-                var checkPos = origin + dir * currentLength;
-                if (_gridBlocks.Where(x => Vector3.Distance(x.Key, checkPos) <= GridBlock.BlockSizeHalf * 1.3f).Any(x => x.Value.Mesh(rot).PointIntersects(checkPos)))
-                {
-                    instructions = ins;
-                    return true;
-                }
-            }
-            dir.Normalize();
-            instructions = ins;
-            return false;
-        }
-
-        IEnumerable<Vector3> DirectNeighbours(GridBlock gridBlock, Func<GridBlock, bool> predicate)
-        {
-            foreach (var item in GridBlock.NeighbourBlocksGrid)
-            {
-                if (_gridBlocks.ContainsKey(item + gridBlock.Position) && predicate(gridBlock))
-                    yield return item + gridBlock.Position;
-            }
         }
 
         public void Save()
