@@ -35,6 +35,7 @@ namespace IngameScript
             Size = new Vector2(1, 1)
         };
         int loopCount = 0;
+        float rotEl = 0;
         int maxLoopCount = 100;
         string INI_SECTION_HEADER = "Damage Display";
         string currentID = "main";
@@ -130,121 +131,100 @@ namespace IngameScript
         {
             while (true)
             {
-                Echo("Rendering...");
-                // Rendering current info
+                try
                 {
-                    var blocksToRender = new HashSet<MyTuple<Vector3, GridBlock>>();
-                    foreach (var item in _gridBlocks)
+                    throw new InvalidCastException();
+                }
+                catch (Exception)
+                {
+
+                }
+                Echo("Rendering...");
+                rotEl += 0.01f;
+                Vector3 forward = Vector3.Forward * 10;
+                CubeMesh m = new CubeMesh();
+                m.Rotation = Matrix.CreateRotationY(rotEl);
+                m.Triangles = GridBlock.Lines;
+                m.Vertices = GridBlock.Vertices.ToArray();
+                Echo($"Rendering {m.Vertices.Count()} vertices");
+                foreach (var context in _textPanelRenderingContexts)
+                {
+                    foreach (var lcd in context.Value)
                     {
-                        if (!item.Value.IsAir)
+                        var df = lcd.TextPanel.DrawFrame();
+                        var vertices = m.Vertices;
+                        for (int i = 0; i < m.Triangles.Length / 2; i+=2)
                         {
+                            var firstVertex = vertices[i] + forward;
+                            var secondVertex = vertices[i+1] + forward;
+                            var projectedPoint1 = context.Key.ProjectLocalPoint(firstVertex);
+                            var projectedPoint2 = context.Key.ProjectLocalPoint(secondVertex);
 
-                        }
-
-                        loopCount++;
-                        if (loopCount >= maxLoopCount)
-                        {
-                            yield return new WaitForNextTick();
-                        }
-                    }
-                    List<Vector3> verticiesToRender = new List<Vector3>();
-                    int i = 0;
-                    foreach (var block in blocksToRender)
-                    {
-                        verticiesToRender.AddRange(GridBlock.Vertices.Select(vertexLocal => vertexLocal + block.Key * 2.5f));
-
-                        loopCount++;
-                        if (loopCount >= maxLoopCount)
-                        {
-                            yield return new WaitForNextTick();
-                        }
-                    }
-                    Echo("Gathering vertices finished");
-                    foreach (var context in _textPanelRenderingContexts)
-                    {
-                        Echo("Rendering vertices...");
-                        Vector3 rotation = context.Value.First().Rotation;
-                        List<Vector3> renderedVerticies = new List<Vector3>();
-                        List<Vector2> pixels = new List<Vector2>();
-
-                        foreach (var vertex in verticiesToRender)
-                        {
-                            //try { throw new InvalidOperationException("break my point"); } catch (Exception) { }
-                            Vector3D vertexToRotate = vertex * localVertexMultiplier;
-                            vertexToRotate = Vector3D.Rotate(vertexToRotate, MatrixD.CreateRotationX(-rotation.X) * MatrixD.CreateRotationY(-rotation.Y) * MatrixD.CreateRotationZ(-rotation.Z));
-                            var lpointToProject = vertexToRotate + Vector3D.Left * 2.4d + Vector3D.Down * 1.2f + Vector3D.Forward * 15;
-                            if (!renderedVerticies.Contains(lpointToProject))
+                            if (projectedPoint1 != null && projectedPoint2 != null)
                             {
-                                renderedVerticies.Add(lpointToProject);
-                                var proj = context.Key.ProjectLocalPoint(lpointToProject);
-                                if (proj != null)
-                                {
-                                    pixels.Add((Vector2)proj);
-                                }
+                                df.Add(DrawLine((Vector2)projectedPoint1, (Vector2)projectedPoint2));
                             }
-
                             loopCount++;
                             if (loopCount >= maxLoopCount)
                             {
                                 yield return new WaitForNextTick();
                             }
                         }
-                        Echo("Rendering vertices finished: " + pixels.Count());
-                        foreach (var lcd in context.Value)
-                        {
-                            Echo("LCD: " + lcd.TextPanel.CustomName);
-                            var df = lcd.TextPanel.DrawFrame();
-                            foreach (var pixel in pixels)
-                            {
-                                PixelSprite.Position = pixel;
-                                df.Add(PixelSprite);
-
-                                loopCount++;
-                                if (loopCount >= maxLoopCount)
-                                {
-                                    yield return new WaitForNextTick();
-                                }
-                            }
-                            df.Dispose();
-                            Echo("Rendered verticies applied");
-                        }
+                        df.Dispose();
+                        Echo($"Rendered {m.Vertices.Count()} vertices onto {lcd.TextPanel.CustomName}");
                     }
                 }
 
-                yield return new WaitForMilliseconds(2000);
+                yield return new WaitForMilliseconds(10);
             }
+        }
+
+        MySprite DrawLine(Vector2 start, Vector2 end)
+        {
+            MySprite sp = new MySprite();
+            Vector2 dir = end - start;
+            Vector2 size = new Vector2(1, dir.Length());
+            sp.Type = SpriteType.TEXTURE;
+            sp.Data = "SquareSimple";
+            sp.Position = start;
+            sp.Size = size;
+            float az, el;
+            Vector3.GetAzimuthAndElevation(new Vector3(-dir.X, 0, dir.Y), out az, out el);
+            sp.RotationOrScale = az;
+            return sp;
         }
 
         IEnumerator GatherShipInfo()
         {
-            try { throw new InvalidOperationException("break my point"); } catch (Exception) { }
-            Echo("Started gathering all blocks");
-            Draw.DrawPoint(_seu.CurrentCubeGrid.GridIntegerToWorld(_seu.CurrentCubeGrid.Min), Color.Red, 0.2f, 10);
-            Draw.DrawPoint(_seu.CurrentCubeGrid.GridIntegerToWorld(_seu.CurrentCubeGrid.Max), Color.Blue, 0.2f, 10);
-            Vector3 gridSize = _seu.CurrentCubeGrid.Max - _seu.CurrentCubeGrid.Min;
-            // maxFarOut * x = 2.4f -> 2.4f / maxFarOut = x
-            float maxFarOut = gridSize.Max() / 2;
-            localVertexMultiplier = 2.4f / maxFarOut;
-            _gridBlocks = new SortedDictionary<Vector3, GridBlock>();
-            for (int x = 0; x < gridSize.X; x++)
-            {
-                for (int y = 0; y < gridSize.Y; y++)
-                {
-                    for (int z = 0; z < gridSize.Z; z++)
-                    {
-                        var pos = _seu.CurrentCubeGrid.Min + new Vector3I(x, y, z);
-                        var slim = _seu.CurrentCubeGrid.GetCubeBlock(pos);
-                        _gridBlocks.Add(pos, new GridBlock() { Position = pos, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
+            yield return new WaitForNextTick();
+            //try { throw new InvalidOperationException("break my point"); } catch (Exception) { }
+            //Echo("Started gathering all blocks");
+            //Draw.DrawPoint(_seu.CurrentCubeGrid.GridIntegerToWorld(_seu.CurrentCubeGrid.Min), Color.Red, 0.2f, 10);
+            //Draw.DrawPoint(_seu.CurrentCubeGrid.GridIntegerToWorld(_seu.CurrentCubeGrid.Max), Color.Blue, 0.2f, 10);
+            //Vector3 gridSize = _seu.CurrentCubeGrid.Max - _seu.CurrentCubeGrid.Min;
+            //// maxFarOut * x = 2.4f -> 2.4f / maxFarOut = x
+            //float maxFarOut = gridSize.Max() / 2;
+            //localVertexMultiplier = 2.4f / maxFarOut;
+            //_gridBlocks = new SortedDictionary<Vector3, GridBlock>();
+            //for (int x = 0; x < gridSize.X; x++)
+            //{
+            //    for (int y = 0; y < gridSize.Y; y++)
+            //    {
+            //        for (int z = 0; z < gridSize.Z; z++)
+            //        {
+            //            var pos = _seu.CurrentCubeGrid.Min + new Vector3I(x, y, z);
+            //            var slim = _seu.CurrentCubeGrid.GetCubeBlock(pos);
+            //            _gridBlocks.Add(pos, new GridBlock() { Position = pos, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
 
-                        loopCount++;
-                        if (loopCount >= maxLoopCount)
-                        {
-                            yield return new WaitForNextTick();
-                        }
-                    }
-                }
-            }
-            Echo("Gathered all blocks");
+            //            loopCount++;
+            //            if (loopCount >= maxLoopCount)
+            //            {
+            //                yield return new WaitForNextTick();
+            //            }
+            //        }
+            //    }
+            //}
+            //Echo("Gathered all blocks");
         }
 
         bool IsOutside(GridBlock block)
@@ -388,7 +368,8 @@ namespace IngameScript
     public class CubeMesh
     {
         public Matrix Rotation;
-        private SortedSet<Vector3> _vertices = new SortedSet<Vector3>();
+        private List<Vector3> _vertices = new List<Vector3>();
+        public int[] Triangles { get; set; }
         public Vector3[] Vertices
         {
             get
@@ -400,10 +381,11 @@ namespace IngameScript
                 _vertices.Clear();
                 foreach (var item in value)
                 {
-                    _vertices.Add(item);
+                    _vertices.Add(Vector3.Transform(item, Rotation));
                 }
-                Min = _vertices.First();
-                Max = _vertices.Last();
+                var r = _vertices.OrderBy(x=> x.Length()).ToList();
+                Min = r.First();
+                Max = r.Last();
             }
         }
         public Vector3 Min;
@@ -490,14 +472,21 @@ namespace IngameScript
         };
 
         public static List<Vector3> Vertices = new List<Vector3>() {
-            new Vector3(BlockSizeHalf, BlockSizeHalf, BlockSizeHalf),
-            new Vector3(-BlockSizeHalf, BlockSizeHalf, BlockSizeHalf),
-            new Vector3(BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),
-            new Vector3(BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf),
-            new Vector3(-BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),
-            new Vector3(-BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf),
-            new Vector3(BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf),
-            new Vector3(-BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf)
+            new Vector3(BlockSizeHalf, BlockSizeHalf, BlockSizeHalf), // 0
+            new Vector3(-BlockSizeHalf, BlockSizeHalf, BlockSizeHalf),// 1
+            new Vector3(BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),// 2
+            new Vector3(BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf),// 3
+            new Vector3(-BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),// 4
+            new Vector3(-BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf),// 5
+            new Vector3(BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf),// 6
+            new Vector3(-BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf)// 7
+        };
+
+        public static int[] Lines = new int[]
+        {
+            0,1,
+            1,3,
+            7,3,
         };
 
         public enum GridBlockStatus
