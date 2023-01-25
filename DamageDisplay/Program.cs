@@ -144,30 +144,30 @@ namespace IngameScript
                 rotEl = MathHelper.WrapAngle(rotEl);
                 rotOl += 0.002f;
                 rotOl = MathHelper.WrapAngle(rotOl);
-                float roll = MathHelper.WrapAngle(rotOl * 2);
-                Vector3 forward = Vector3.Forward * 5;
+                Vector3 forward = Vector3.Forward * 10;
                 Mesh m = new Mesh();
                 m.Color = Color.White;
-                m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl) * Matrix.CreateRotationZ(roll);
-                m.Triangles = GridBlock.ExampleCubeTriangles;
-                m.Vertices = GridBlock.ExampleCubeVertices.ToArray();
+                m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
+                m.Triangles = GridBlock.ExampleCubeSTriangles;
+                m.Vertices = GridBlock.ExampleCubeSVertices.ToArray();
                 Echo($"Rendering {m.Vertices.Count()} vertices");
                 foreach (var context in _textPanelRenderingContexts)
                 {
-                    float w = 50;
+                    float w = 20;
                     foreach (var lcd in context.Value)
                     {
                         var df = lcd.TextPanel.DrawFrame();
                         // triangle test
-                        Vector2 p1 = new Vector2(30 + rotEl * 10, 80 + rotEl * 20);
-                        Vector2 p2 = new Vector2(130 + rotEl * 20, 100);
-                        Vector2 p3 = new Vector2(100, 50 + rotEl * 30 + 40);
-                        FillArbitraryTriangle(p1, p2, p3, Color.White, df);
-                        PixelSprite.Size = new Vector2(4, 4);
-                        PixelSprite.Color = Color.Red;
-                        PixelSprite.Color = Color.White;
+                        //Vector2 p1 = new Vector2(30 + rotEl * 10, 80 + rotEl * 20);
+                        //Vector2 p2 = new Vector2(130 + rotEl * 20, 100);
+                        //Vector2 p3 = new Vector2(100, 50 + rotEl * 30 + 40);
+                        //FillArbitraryTriangle(p1, p2, p3, Color.White, df);
+                        //PixelSprite.Size = new Vector2(4, 4);
+                        //PixelSprite.Color = Color.Red;
+                        //PixelSprite.Color = Color.White;
 
                         var vertices = m.Vertices.ToList();
+                        var triangles = m.Triangles;
                         //foreach (var item in vertices)
                         //{
                         //    var proj = context.Key.ProjectLocalPoint(item + forward);
@@ -177,25 +177,33 @@ namespace IngameScript
                         //        df.Add(PixelSprite);
                         //    }
                         //}
+                        // order in which to render the triangles
+
+                        MyTuple<int, float>[] triangleDistances = new MyTuple<int, float>[m.Triangles.Length/3];
+                        for (int i = 0; i < m.Triangles.Length; i+=3)
+                        {
+                            triangleDistances[i / 3] = new MyTuple<int, float>(i, new Vector3(vertices[triangles[i]].Length(), vertices[triangles[i + 1]].Length(), vertices[triangles[i + 2]].Length()).Min());
+                        }
                         bool yes = true;
-                        for (int i = 0; i < m.Triangles.Length; i += 3)
+                        triangleDistances = triangleDistances.OrderByDescending(x => x.Item2).ToArray();
+                        for (int i = 0; i < triangleDistances.Length; i++)
                         {
                             if (yes)
                             {
-                                w += 20;
+                                w += 30;
                             }
                             yes = !yes;
-                            var firstVertex = vertices[m.Triangles[i]] + forward;
-                            var secondVertex = vertices[m.Triangles[i + 1]] + forward;
-                            var thirdVertex = vertices[m.Triangles[i + 2]] + forward;
+                            var firstVertex = vertices[triangles[triangleDistances[i].Item1]] + forward;
+                            var secondVertex = vertices[triangles[triangleDistances[i].Item1 + 1]] + forward;
+                            var thirdVertex = vertices[triangles[triangleDistances[i].Item1 + 2]] + forward;
 
                             var projectedPoint1 = context.Key.ProjectLocalPoint(firstVertex);
                             var projectedPoint2 = context.Key.ProjectLocalPoint(secondVertex);
                             var projectedPoint3 = context.Key.ProjectLocalPoint(thirdVertex);
 
-                            if (GetPointsOrientation((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3) == 2)
+                            if (projectedPoint1 != null && projectedPoint2 != null && projectedPoint3 != null)
                             {
-                                if (projectedPoint1 != null && projectedPoint2 != null && projectedPoint3 != null)
+                                if (GetPointsOrientation((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3) == 2)
                                 {
                                     FillArbitraryTriangle((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3, Color.FromNonPremultiplied((int)w, (int)w, (int)w, 255), df);
                                 }
@@ -502,6 +510,33 @@ namespace IngameScript
         };
 
         public static int[] ExampleCubeTriangles = new int[]
+        {
+            0,2,4,
+            4,1,0,
+            2,0,3,
+            3,6,2,
+            3,7,5,
+            5,6,3,
+            7,1,4,
+            4,5,7,
+            6,5,4,
+            4,2,6,
+            0,1,7,
+            7,3,0
+        };
+
+        public static List<Vector3> ExampleCubeSVertices = new List<Vector3>() {
+            new Vector3(BlockSizeHalf, BlockSizeHalf * 2, BlockSizeHalf),    // 0
+            new Vector3(-BlockSizeHalf, BlockSizeHalf * 2, BlockSizeHalf),   // 1
+            new Vector3(BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),   // 2
+            new Vector3(BlockSizeHalf, BlockSizeHalf * 2, -BlockSizeHalf),   // 3
+            new Vector3(-BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),  // 4
+            new Vector3(-BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf), // 5
+            new Vector3(BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf),  // 6
+            new Vector3(-BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf)   // 7
+        };
+
+        public static int[] ExampleCubeSTriangles = new int[]
         {
             0,2,4,
             4,1,0,
