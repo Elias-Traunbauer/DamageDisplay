@@ -120,7 +120,7 @@ namespace IngameScript
 
         IEnumerator StartSystem()
         {
-            int id = _seu.StartCoroutine(GatherShipInfo());
+            int id = _seu.StartCoroutine(GatherInitialShipInfo());
             //yield return new WaitForNextTick();
             yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), 5000, 1000, () => { Echo("Script start timeouted"); return false; });
 
@@ -146,7 +146,7 @@ namespace IngameScript
                 rotOl += 0.005f;
                 rotOl = MathHelper.WrapAngle(rotOl);
                 Vector3 forward = Vector3.Forward * 5;
-                CubeMesh m = new CubeMesh();
+                Mesh m = new Mesh();
                 m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
                 m.Triangles = GridBlock.ExampleCubeTriangles;
                 m.Vertices = GridBlock.ExampleCubeVertices.ToArray();
@@ -196,7 +196,7 @@ namespace IngameScript
                             {
                                 if (projectedPoint1 != null && projectedPoint2 != null && projectedPoint3 != null)
                                 {
-                                    FillTriangle((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3, Color.FromNonPremultiplied(255, 255, 255, (int)w), df);
+                                    FillArbitraryTriangle((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3, Color.FromNonPremultiplied(255, 255, 255, (int)w), df);
                                 }
                             }
 
@@ -256,9 +256,8 @@ namespace IngameScript
             return sp;
         }
 
-        void FillTriangle(Vector2 p1, Vector2 p2, Vector2 p3, Color c, MySpriteDrawFrame df)
+        void FillArbitraryTriangle(Vector2 p1, Vector2 p2, Vector2 p3, Color c, MySpriteDrawFrame df)
         {
-            // clockwise https://stackoverflow.com/questions/1165647/how-to-determine-if-a-list-of-polygon-points-are-in-clockwise-order#:~:text=Here's%20a%20simple%20one%20that,the%20curve%20is%20counter%2Dclockwise.
             MySprite sp = new MySprite();
             sp.Type = SpriteType.TEXTURE;
             sp.Data = "RightTriangle";
@@ -268,73 +267,76 @@ namespace IngameScript
             // 2nd line: p2->p3
             // 3rd line: p1->p3
 
+            // find the hypotenuse and assign the correct values
             float[] lineLengths = new float[] { Vector2.Distance(p1, p2), Vector2.Distance(p2, p3), Vector2.Distance(p1, p3) };
 
-            Vector2 origin;
-            Vector2 originOpposite;
-            Vector2 hypotenuseDir;
-            Vector2 hypotenuseDirNormalized;
-            Vector2 externalPoint;
+            // A->B = hypotenuse
+
+            Vector2 A;
+            Vector2 B;
+            Vector2 AtoB;
+            Vector2 AtoBNormalized;
+            Vector2 C;
             float maxLineLength = lineLengths.Max();
 
             if (maxLineLength == lineLengths[0])
             {
                 // 1st line hyp
-                origin = p1;
-                originOpposite = p2;
-                hypotenuseDir = p2 - p1;
-                externalPoint = p3;
+                A = p1;
+                B = p2;
+                C = p3;
             }
             else if (maxLineLength == lineLengths[1])
             {
                 // 2nd line hyp
-                origin = p2;
-                originOpposite = p3;
-                hypotenuseDir = p3 - p2;
-                externalPoint = p1;
+                A = p2;
+                B = p3;
+                C = p1;
             }
             else
             {
                 // 3rd line hyp
-                origin = p3;
-                originOpposite = p1;
-                hypotenuseDir = p1 - p3;
-                externalPoint = p2;
+                A = p3;
+                B = p1;
+                C = p2;
             }
-            hypotenuseDirNormalized = Vector2.Normalize(hypotenuseDir);
-
-            Vector2 triangleAnchor;
-            Vector2 originToExternalPoint = externalPoint - origin;
-            float dotP = Vector2.Dot(originToExternalPoint, hypotenuseDirNormalized);
-            triangleAnchor = origin + hypotenuseDirNormalized * dotP;
+            // general setup
+            AtoB = A.To(B);
+            AtoBNormalized = Vector2.Normalize(AtoB);
+            // anchor for the two right angled triangles
+            Vector2 D;
+            Vector2 AtoC = A.To(C);
+            float dotProduct = Vector2.Dot(AtoC, AtoBNormalized);
+            D = A + AtoBNormalized * dotProduct;
             float baseRot = MathHelper.Pi / 2;
 
             // first triangle
-            Vector2 directionToTriangleAnchor = triangleAnchor - origin;
-            float rot = GetRotation(directionToTriangleAnchor) + baseRot;
-            Vector2 size = originToExternalPoint;
-            size.Rotate(-(GetRotation(directionToTriangleAnchor) + baseRot));
-            size *= -1;
-            sp.Size = size;
-            Vector2 spritePos = origin + originToExternalPoint / 2 - new Vector2(size.X / 2, 0);
-            sp.Position = spritePos;
-            sp.RotationOrScale = rot;
+            Vector2 AtoD = A.To(D);
+            float rotation = GetRotation(AtoD) + baseRot;
+            Vector2 spriteSize = AtoC;
+            spriteSize.Rotate(-(GetRotation(AtoD) + baseRot));
+            spriteSize *= -1;
+            sp.Size = spriteSize;
+            Vector2 spritePosition = A + AtoC / 2 - new Vector2(spriteSize.X / 2, 0);
+            sp.Position = spritePosition;
+            sp.RotationOrScale = rotation;
             df.Add(sp);
 
-            directionToTriangleAnchor = originOpposite - triangleAnchor;
-            rot = GetRotation(directionToTriangleAnchor) + baseRot;
-            Vector2 oppToExternal = externalPoint - originOpposite;
-            size = oppToExternal;
-            size.Rotate(-(GetRotation(directionToTriangleAnchor) + baseRot));
-            size *= -1;
-            sp.Size = size;
-            spritePos = originOpposite + (externalPoint - triangleAnchor) / 2 + (triangleAnchor - originOpposite) / 2 - new Vector2(size.X / 2, 0);
-            sp.Position = spritePos;
-            sp.RotationOrScale = rot;
+            // second triangle
+            var BtoD = B.To(D);
+            rotation = GetRotation(AtoD) + baseRot;
+            Vector2 BtoC = B.To(C);
+            spriteSize = BtoC;
+            spriteSize.Rotate(-(GetRotation(AtoD) + baseRot));
+            spriteSize *= -1;
+            sp.Size = spriteSize;
+            spritePosition = B + (D.To(C)) / 2 + (BtoD) / 2 - new Vector2(spriteSize.X / 2, 0);
+            sp.Position = spritePosition;
+            sp.RotationOrScale = rotation;
             df.Add(sp);
         }
 
-        IEnumerator GatherShipInfo()
+        IEnumerator GatherInitialShipInfo()
         {
             yield return new WaitForNextTick();
             //try { throw new InvalidOperationException("break my point"); } catch (Exception) { }
@@ -373,46 +375,34 @@ namespace IngameScript
         }
     }
 
-    public class CubeMesh
+    public class Mesh
     {
-        public Matrix Rotation;
-        private List<Vector3> _vertices = new List<Vector3>();
-        public int[] Triangles { get; set; }
-        public Vector3[] Vertices
-        {
-            get
-            {
-                return _vertices.ToArray();
-            }
-            set
-            {
-                _vertices.Clear();
-                foreach (var item in value)
-                {
-                    _vertices.Add(Vector3.Transform(item, Rotation));
-                }
-                var r = _vertices.OrderBy(x=> x.Length()).ToList();
-                Min = r.First();
-                Max = r.Last();
-            }
-        }
-        public Vector3 Min;
-        public Vector3 Max;
+        private List<Vector3> _vertices;
 
-        public bool PointIntersects(Vector3 pos)
+        public List<Vector3> Vertices
         {
-            return IsBigger(pos, Min) && IsSmaller(pos, Max);
+            get { return _vertices; }
+            set { _vertices = value; }
         }
 
-        public bool IsBigger(Vector3 v1, Vector3 v2)
+        private int[] _triangles;
+
+        public int[] Triangles
         {
-            return v1.X > v2.X && v1.Y > v2.Y && v1.Z > v2.Z;
+            get { return _triangles; }
+            set { _triangles = value; }
         }
 
-        public bool IsSmaller(Vector3 v1, Vector3 v2)
+        private Matrix _rotation;
+
+        public Matrix Rotation
         {
-            return v1.X < v2.X && v1.Y < v2.Y && v1.Z < v2.Z;
+            get { return _rotation; }
+            set { _rotation = value; }
         }
+
+        private int verticesHash = -1;
+        private int rotationHash = -1;
     }
 
     public class LCDWithRotation
@@ -427,13 +417,13 @@ namespace IngameScript
         public IMySlimBlock SlimBlock { get; set; }
         public IMyTerminalBlock TerminalBlock { get; set; }
         private int LastMeshHash { get; set; }
-        private CubeMesh _mesh;
+        private Mesh _mesh;
         private Matrix rot;
-        public CubeMesh Mesh(Matrix rotation)
+        public Mesh Mesh(Matrix rotation)
         {
             if (LastMeshHash == GetHashCode() || rot != rotation)
             {
-                _mesh = new CubeMesh();
+                _mesh = new Mesh();
                 _mesh.Rotation = rotation;
                 _mesh.Vertices = ExampleCubeVertices.ToArray();
                 rot = rotation;
