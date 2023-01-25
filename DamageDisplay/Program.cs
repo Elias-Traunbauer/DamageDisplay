@@ -24,7 +24,6 @@ namespace IngameScript
     {
         SEUtils _seu;
         MyIni _ini;
-        float localVertexMultiplier;
         SortedDictionary<Vector3, GridBlock> _gridBlocks;
         Dictionary<TextPanelRenderingContext, List<LCDWithRotation>> _textPanelRenderingContexts = new Dictionary<TextPanelRenderingContext, List<LCDWithRotation>>();
         MySprite PixelSprite = new MySprite()
@@ -141,16 +140,18 @@ namespace IngameScript
 
                 }
                 Echo("Rendering...");
-                rotEl += 0.01f;
+                rotEl += 0.003f;
                 rotEl = MathHelper.WrapAngle(rotEl);
-                rotOl += 0.005f;
+                rotOl += 0.002f;
                 rotOl = MathHelper.WrapAngle(rotOl);
+                float roll = MathHelper.WrapAngle(rotOl * 2);
                 Vector3 forward = Vector3.Forward * 5;
                 Mesh m = new Mesh();
-                m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
+                m.Color = Color.White;
+                m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl) * Matrix.CreateRotationZ(roll);
                 m.Triangles = GridBlock.ExampleCubeTriangles;
                 m.Vertices = GridBlock.ExampleCubeVertices.ToArray();
-                Echo($"Rendering {m.Triangles.Count()} lines");
+                Echo($"Rendering {m.Vertices.Count()} vertices");
                 foreach (var context in _textPanelRenderingContexts)
                 {
                     float w = 50;
@@ -158,13 +159,13 @@ namespace IngameScript
                     {
                         var df = lcd.TextPanel.DrawFrame();
                         // triangle test
-                        //Vector2 p1 = new Vector2(30 + rotEl * 10, 80 + rotEl * 20);
-                        //Vector2 p2 = new Vector2(130 + rotEl * 20, 100);
-                        //Vector2 p3 = new Vector2(100, 50 + rotEl * 30 + 40);
-                        //FillTriangle(p1, p2, p3, df);
-                        //PixelSprite.Size = new Vector2(4, 4);
-                        //PixelSprite.Color = Color.Red;
-                        //PixelSprite.Color = Color.White;
+                        Vector2 p1 = new Vector2(30 + rotEl * 10, 80 + rotEl * 20);
+                        Vector2 p2 = new Vector2(130 + rotEl * 20, 100);
+                        Vector2 p3 = new Vector2(100, 50 + rotEl * 30 + 40);
+                        FillArbitraryTriangle(p1, p2, p3, Color.White, df);
+                        PixelSprite.Size = new Vector2(4, 4);
+                        PixelSprite.Color = Color.Red;
+                        PixelSprite.Color = Color.White;
 
                         var vertices = m.Vertices.ToList();
                         //foreach (var item in vertices)
@@ -177,7 +178,7 @@ namespace IngameScript
                         //    }
                         //}
                         bool yes = true;
-                        for (int i = 0; i < m.Triangles.Length; i+=3)
+                        for (int i = 0; i < m.Triangles.Length; i += 3)
                         {
                             if (yes)
                             {
@@ -185,18 +186,18 @@ namespace IngameScript
                             }
                             yes = !yes;
                             var firstVertex = vertices[m.Triangles[i]] + forward;
-                            var secondVertex = vertices[m.Triangles[i+1]] + forward;
-                            var thirdVertex = vertices[m.Triangles[i+2]] + forward;
+                            var secondVertex = vertices[m.Triangles[i + 1]] + forward;
+                            var thirdVertex = vertices[m.Triangles[i + 2]] + forward;
 
                             var projectedPoint1 = context.Key.ProjectLocalPoint(firstVertex);
                             var projectedPoint2 = context.Key.ProjectLocalPoint(secondVertex);
                             var projectedPoint3 = context.Key.ProjectLocalPoint(thirdVertex);
 
-                            if (Orientation((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3) == 2)
+                            if (GetPointsOrientation((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3) == 2)
                             {
                                 if (projectedPoint1 != null && projectedPoint2 != null && projectedPoint3 != null)
                                 {
-                                    FillArbitraryTriangle((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3, Color.FromNonPremultiplied(255, 255, 255, (int)w), df);
+                                    FillArbitraryTriangle((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3, Color.FromNonPremultiplied((int)w, (int)w, (int)w, 255), df);
                                 }
                             }
 
@@ -207,7 +208,7 @@ namespace IngameScript
                             }
                         }
                         df.Dispose();
-                        Echo($"Rendered {m.Triangles.Count()} lines onto {lcd.TextPanel.CustomName}");
+                        Echo($"Rendered {m.Vertices.Count()} vertices onto {lcd.TextPanel.CustomName}");
                     }
                 }
 
@@ -221,7 +222,7 @@ namespace IngameScript
         // 0 --> line
         // 1 --> Clockwise
         // 2 --> Counterclockwise
-        public static int Orientation(Vector2 p1, Vector2 p2, Vector2 p3)
+        public static int GetPointsOrientation(Vector2 p1, Vector2 p2, Vector2 p3)
         {
             int val = (int)((p2.Y - p1.Y) * (p3.X - p2.X) -
                     (p2.X - p1.X) * (p3.Y - p2.Y));
@@ -309,6 +310,7 @@ namespace IngameScript
             float dotProduct = Vector2.Dot(AtoC, AtoBNormalized);
             D = A + AtoBNormalized * dotProduct;
             float baseRot = MathHelper.Pi / 2;
+            float GAP_ELIMINATOR = 1f;
 
             // first triangle
             Vector2 AtoD = A.To(D);
@@ -316,6 +318,7 @@ namespace IngameScript
             Vector2 spriteSize = AtoC;
             spriteSize.Rotate(-(GetRotation(AtoD) + baseRot));
             spriteSize *= -1;
+            spriteSize *= GAP_ELIMINATOR;
             sp.Size = spriteSize;
             Vector2 spritePosition = A + AtoC / 2 - new Vector2(spriteSize.X / 2, 0);
             sp.Position = spritePosition;
@@ -330,7 +333,8 @@ namespace IngameScript
             spriteSize.Rotate(-(GetRotation(AtoD) + baseRot));
             spriteSize *= -1;
             sp.Size = spriteSize;
-            spritePosition = B + (D.To(C)) / 2 + (BtoD) / 2 - new Vector2(spriteSize.X / 2, 0);
+            spritePosition = B + D.To(C) / 2 + BtoD / 2 - new Vector2(spriteSize.X / 2, 0);
+            spritePosition.X -= spritePosition.X * (GAP_ELIMINATOR - 1);
             sp.Position = spritePosition;
             sp.RotationOrScale = rotation;
             df.Add(sp);
@@ -377,11 +381,25 @@ namespace IngameScript
 
     public class Mesh
     {
-        private List<Vector3> _vertices;
+        public Color Color { get; set; }
+        private Vector3[] _vertices;
 
-        public List<Vector3> Vertices
+        public Vector3[] Vertices
         {
-            get { return _vertices; }
+            get
+            {
+                if (verticesHash + rotationHash != _vertices.GetHashCode() + _rotation.GetHashCode())
+                {
+                    verticesHash = _vertices.GetHashCode();
+                    rotationHash = _rotation.GetHashCode();
+
+                    for (int i = 0; i < _vertices.Count(); i++)
+                    {
+                        _vertices[i] = Vector3.Transform(_vertices[i], _rotation);
+                    }
+                }
+                return _vertices;
+            }
             set { _vertices = value; }
         }
 
@@ -398,7 +416,10 @@ namespace IngameScript
         public Matrix Rotation
         {
             get { return _rotation; }
-            set { _rotation = value; }
+            set
+            {
+                _rotation = value;
+            }
         }
 
         private int verticesHash = -1;
