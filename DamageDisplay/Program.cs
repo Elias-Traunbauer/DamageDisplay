@@ -39,6 +39,7 @@ namespace IngameScript
         int maxLoopCount = 100;
         string INI_SECTION_HEADER = "Damage Display";
         string currentID = "main";
+        string mesh = "";
 
         public Program()
         {
@@ -144,59 +145,61 @@ namespace IngameScript
                 rotEl = MathHelper.WrapAngle(rotEl);
                 rotOl += 0.005f;
                 rotOl = MathHelper.WrapAngle(rotOl);
-                Vector3 forward = Vector3.Forward * 8;
+                Vector3 forward = Vector3.Forward * 5;
                 CubeMesh m = new CubeMesh();
                 m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
-                m.Triangles = GridBlock.ExampleCubeLines;
+                m.Triangles = GridBlock.ExampleCubeTriangles;
                 m.Vertices = GridBlock.ExampleCubeVertices.ToArray();
                 Echo($"Rendering {m.Triangles.Count()} lines");
                 foreach (var context in _textPanelRenderingContexts)
                 {
+                    float w = 50;
                     foreach (var lcd in context.Value)
                     {
                         var df = lcd.TextPanel.DrawFrame();
-
-                        //// line test
-                        //Vector2 start = new Vector2(30, 30);
-                        //Vector2 end = new Vector2(50, 100);
-                        //PixelSprite.Size = new Vector2(3, 3);
-                        //PixelSprite.Position = start;
-                        //df.Add(PixelSprite);
-                        //PixelSprite.Position = end;
-                        //df.Add(PixelSprite);
-                        //PixelSprite.Size = new Vector2(1, 1);
-                        //df.Add(DrawLine(start, end));
-
                         // triangle test
-                        Vector2 p1 = new Vector2(30, 100);
-                        Vector2 p2 = new Vector2(130, 100);
-                        Vector2 p3 = new Vector2(60, 50);
-                        FillTriangle(p1, p2, p3, df);
-                        PixelSprite.Size = new Vector2(4, 4);
-                        PixelSprite.Color = Color.Red;
+                        //Vector2 p1 = new Vector2(30 + rotEl * 10, 80 + rotEl * 20);
+                        //Vector2 p2 = new Vector2(130 + rotEl * 20, 100);
+                        //Vector2 p3 = new Vector2(100, 50 + rotEl * 30 + 40);
+                        //FillTriangle(p1, p2, p3, df);
+                        //PixelSprite.Size = new Vector2(4, 4);
+                        //PixelSprite.Color = Color.Red;
                         //PixelSprite.Color = Color.White;
 
                         var vertices = m.Vertices.ToList();
-                        foreach (var item in vertices)
+                        //foreach (var item in vertices)
+                        //{
+                        //    var proj = context.Key.ProjectLocalPoint(item + forward);
+                        //    if (proj != null)
+                        //    {
+                        //        PixelSprite.Position = proj;
+                        //        df.Add(PixelSprite);
+                        //    }
+                        //}
+                        bool yes = true;
+                        for (int i = 0; i < m.Triangles.Length; i+=3)
                         {
-                            var proj = context.Key.ProjectLocalPoint(item + forward);
-                            if (proj != null)
+                            if (yes)
                             {
-                                PixelSprite.Position = proj;
-                                df.Add(PixelSprite);
+                                w += 20;
                             }
-                        }
-                        for (int i = 0; i < m.Triangles.Length; i+=2)
-                        {
+                            yes = !yes;
                             var firstVertex = vertices[m.Triangles[i]] + forward;
                             var secondVertex = vertices[m.Triangles[i+1]] + forward;
+                            var thirdVertex = vertices[m.Triangles[i+2]] + forward;
+
                             var projectedPoint1 = context.Key.ProjectLocalPoint(firstVertex);
                             var projectedPoint2 = context.Key.ProjectLocalPoint(secondVertex);
+                            var projectedPoint3 = context.Key.ProjectLocalPoint(thirdVertex);
 
-                            if (projectedPoint1 != null && projectedPoint2 != null)
+                            if (Orientation((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3) == 2)
                             {
-                                df.Add(DrawLine((Vector2)projectedPoint1, (Vector2)projectedPoint2));
+                                if (projectedPoint1 != null && projectedPoint2 != null && projectedPoint3 != null)
+                                {
+                                    FillTriangle((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3, Color.FromNonPremultiplied(255, 255, 255, (int)w), df);
+                                }
                             }
+
                             loopCount++;
                             if (loopCount >= maxLoopCount)
                             {
@@ -210,6 +213,23 @@ namespace IngameScript
 
                 yield return new WaitForMilliseconds(10);
             }
+        }
+
+        // To find orientation of ordered triplet
+        // (p1, p2, p3). The function returns
+        // following values
+        // 0 --> line
+        // 1 --> Clockwise
+        // 2 --> Counterclockwise
+        public static int Orientation(Vector2 p1, Vector2 p2, Vector2 p3)
+        {
+            int val = (int)((p2.Y - p1.Y) * (p3.X - p2.X) -
+                    (p2.X - p1.X) * (p3.Y - p2.Y));
+
+            if (val == 0) return 0; // collinear
+
+            // clock or counterclock wise
+            return (val > 0) ? 1 : 2;
         }
 
         float GetRotation(Vector2 dir)
@@ -236,12 +256,13 @@ namespace IngameScript
             return sp;
         }
 
-        void FillTriangle(Vector2 p1, Vector2 p2, Vector2 p3, MySpriteDrawFrame df)
+        void FillTriangle(Vector2 p1, Vector2 p2, Vector2 p3, Color c, MySpriteDrawFrame df)
         {
-            // clock https://stackoverflow.com/questions/1165647/how-to-determine-if-a-list-of-polygon-points-are-in-clockwise-order#:~:text=Here's%20a%20simple%20one%20that,the%20curve%20is%20counter%2Dclockwise.
+            // clockwise https://stackoverflow.com/questions/1165647/how-to-determine-if-a-list-of-polygon-points-are-in-clockwise-order#:~:text=Here's%20a%20simple%20one%20that,the%20curve%20is%20counter%2Dclockwise.
             MySprite sp = new MySprite();
             sp.Type = SpriteType.TEXTURE;
             sp.Data = "RightTriangle";
+            sp.Color = c;
 
             // 1st line: p1->p2
             // 2nd line: p2->p3
@@ -252,7 +273,7 @@ namespace IngameScript
             Vector2 origin;
             Vector2 originOpposite;
             Vector2 hypotenuseDir;
-            Vector2 hypotenuseNormalized;
+            Vector2 hypotenuseDirNormalized;
             Vector2 externalPoint;
             float maxLineLength = lineLengths.Max();
 
@@ -280,49 +301,36 @@ namespace IngameScript
                 hypotenuseDir = p1 - p3;
                 externalPoint = p2;
             }
-            hypotenuseNormalized = Vector2.Normalize(hypotenuseDir);
+            hypotenuseDirNormalized = Vector2.Normalize(hypotenuseDir);
 
             Vector2 triangleAnchor;
             Vector2 originToExternalPoint = externalPoint - origin;
-            float dotP = Vector2.Dot(originToExternalPoint, hypotenuseNormalized);
-            triangleAnchor = origin + hypotenuseNormalized * dotP;
-            Echo("dotP " + dotP);
-            PixelSprite.Position = p3;
-            df.Add(PixelSprite);
-            float baseRot = -MathHelper.Pi / 2f;
-
-            PixelSprite.Color = Color.Red;
-            PixelSprite.Position = origin;
-            df.Add(PixelSprite);
-            PixelSprite.Color = Color.Yellow;
-            PixelSprite.Position = originOpposite;
-            df.Add(PixelSprite);
-            PixelSprite.Color = Color.White;
-            PixelSprite.Position = externalPoint;
-            df.Add(PixelSprite);
+            float dotP = Vector2.Dot(originToExternalPoint, hypotenuseDirNormalized);
+            triangleAnchor = origin + hypotenuseDirNormalized * dotP;
+            float baseRot = MathHelper.Pi / 2;
 
             // first triangle
-            Vector2 dir = triangleAnchor - origin;
-            Vector2 exDir = externalPoint - origin;
-            float rot = GetRotation(dir) + baseRot;
-            Vector2 size = new Vector2();
-            size.X = dir.Length();
-            size.Y = (externalPoint - triangleAnchor).Length();
-            sp.Position = origin + exDir / 2;
+            Vector2 directionToTriangleAnchor = triangleAnchor - origin;
+            float rot = GetRotation(directionToTriangleAnchor) + baseRot;
+            Vector2 size = originToExternalPoint;
+            size.Rotate(-(GetRotation(directionToTriangleAnchor) + baseRot));
+            size *= -1;
+            sp.Size = size;
+            Vector2 spritePos = origin + originToExternalPoint / 2 - new Vector2(size.X / 2, 0);
+            sp.Position = spritePos;
             sp.RotationOrScale = rot;
-            sp.Color = Color.Blue;
             df.Add(sp);
 
-            // second triangle
-            dir = triangleAnchor - originOpposite;
-            exDir = externalPoint - originOpposite;
-            rot = GetRotation(dir) + baseRot;
-            size = new Vector2();
-            size.X = dir.Length();
-            size.Y = (externalPoint - triangleAnchor).Length();
-            sp.Position = originOpposite + exDir / 2;
+            directionToTriangleAnchor = originOpposite - triangleAnchor;
+            rot = GetRotation(directionToTriangleAnchor) + baseRot;
+            Vector2 oppToExternal = externalPoint - originOpposite;
+            size = oppToExternal;
+            size.Rotate(-(GetRotation(directionToTriangleAnchor) + baseRot));
+            size *= -1;
+            sp.Size = size;
+            spritePos = originOpposite + (externalPoint - triangleAnchor) / 2 + (triangleAnchor - originOpposite) / 2 - new Vector2(size.X / 2, 0);
+            sp.Position = spritePos;
             sp.RotationOrScale = rot;
-            sp.Color = Color.LightBlue;
             df.Add(sp);
         }
 
@@ -482,20 +490,20 @@ namespace IngameScript
             new Vector3(-BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf)   // 7
         };
 
-        public static int[] ExampleCubeLines = new int[]
+        public static int[] ExampleCubeTriangles = new int[]
         {
-            0,1,
-            0,2,
-            2,4,
-            4,1,
-            4,5,
-            5,6,
-            6,2,
-            0,3,
-            6,3,
-            7,3,
-            7,1,
-            5,7
+            0,2,4,
+            4,1,0,
+            2,0,3,
+            3,6,2,
+            3,7,5,
+            5,6,3,
+            7,1,4,
+            4,5,7,
+            6,5,4,
+            4,2,6,
+            0,1,7,
+            7,3,0
         };
 
         public enum GridBlockStatus
