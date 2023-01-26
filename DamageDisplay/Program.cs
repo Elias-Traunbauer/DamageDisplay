@@ -38,7 +38,7 @@ namespace IngameScript
         int maxLoopCount = 100;
         string INI_SECTION_HEADER = "Damage Display";
         string currentID = "main";
-        const float TRIANGLE_SIZE_MULITPLIER = -3f;
+        const float TRIANGLE_SIZE_MULITPLIER = 0.7f;
 
         public Program()
         {
@@ -217,7 +217,7 @@ namespace IngameScript
                     }
                 }
 
-                yield return new WaitForMilliseconds(10);
+                yield return new WaitForNextTick();
             }
         }
 
@@ -326,33 +326,33 @@ namespace IngameScript
 
             // first triangle
             Vector2 AtoTriangleAnchor = A.To(triangleAnchor);
-            Vector2 localLineEliminatorC = C + Vector2.Normalize(AtoTriangleAnchor);
+            // magic vector to make ugly line between the two triangles, drawn here, disappear
+            Vector2 localLineEliminatorC = C + Vector2.Normalize(AtoTriangleAnchor) / 2+ Vector2.Normalize(triangleAnchor.To(C)) * 1.5f;
             float rotation = GetRotation(AtoTriangleAnchor) + baseRot;
-            //Vector2 spriteSize = AtoC;
-            Vector2 spriteSize = A.To(localLineEliminatorC);
+            Vector2 lineEliminatorA = A + Vector2.Normalize(triangleAnchor.To(A)) * 1.5f;
+            Vector2 spriteSize = lineEliminatorA.To(localLineEliminatorC) + Vector2.Normalize(triangleAnchor.To(C));
             spriteSize.Rotate(-(GetRotation(AtoTriangleAnchor) + baseRot));
             spriteSize *= -1;
             sp.Size = spriteSize;
-            //spriteSize += (Vector2.Normalize(spriteSize) * 2) * new Vector2(1, 0);
-            Vector2 spritePosition = A + AtoC / 2 - new Vector2(spriteSize.X / 2, 0);
+            Vector2 spritePosition = lineEliminatorA + lineEliminatorA.To(localLineEliminatorC) / 2 - new Vector2(spriteSize.X / 2, 0);
             sp.Position = spritePosition;
             sp.RotationOrScale = rotation;
             df.Add(sp);
-            //DrawPixel(sp.Position, Color.Red, df);
 
-            // second triangle
-            var BtoD = B.To(triangleAnchor);
+            // second triangle, basically like before, but now mirrored
+            localLineEliminatorC = C + Vector2.Normalize(B.To(triangleAnchor)) / 2 + Vector2.Normalize(triangleAnchor.To(C)) * 1.5f;
             rotation = GetRotation(AtoTriangleAnchor) + baseRot;
-            Vector2 BtoC = B.To(C);
-            spriteSize = BtoC;
+            Vector2 lineEliminatorB = B + Vector2.Normalize(triangleAnchor.To(B)) * 1.5f;
+            Vector2 BtoC = lineEliminatorB.To(localLineEliminatorC);
+            var BtoTriangleAnchor = lineEliminatorB.To(triangleAnchor);
+            spriteSize = BtoC + Vector2.Normalize(triangleAnchor.To(C));
             spriteSize.Rotate(-(GetRotation(AtoTriangleAnchor) + baseRot));
             spriteSize *= -1;
             sp.Size = spriteSize;
-            spritePosition = B + triangleAnchor.To(C) / 2 + BtoD / 2 - new Vector2(spriteSize.X / 2, 0);
+            spritePosition = lineEliminatorB + triangleAnchor.To(localLineEliminatorC) / 2 + BtoTriangleAnchor / 2 - new Vector2(spriteSize.X / 2, 0);
             sp.Position = spritePosition;
             sp.RotationOrScale = rotation;
             df.Add(sp);
-            //DrawPixel(sp.Position, Color.Blue, df);
         }
 
         void DrawPixel(Vector2? pos, Color c, MySpriteDrawFrame df)
