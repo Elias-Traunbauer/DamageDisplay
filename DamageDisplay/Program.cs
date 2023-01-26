@@ -38,7 +38,7 @@ namespace IngameScript
         int maxLoopCount = 100;
         string INI_SECTION_HEADER = "Damage Display";
         string currentID = "main";
-        string mesh = "";
+        const float TRIANGLE_SIZE_MULITPLIER = -3f;
 
         public Program()
         {
@@ -269,6 +269,14 @@ namespace IngameScript
             sp.Data = "RightTriangle";
             sp.Color = c;
 
+            // make triangle larger to beat the evil ugly lines
+            var pointBetweenP1andP2 = p1 + p1.To(p2) / 2;
+            var pointBetweenP1andP3 = p1 + p1.To(p3) / 2;
+            var pointBetweenP2andP3 = p2 + p2.To(p3) / 2;
+            p1 += Vector2.Normalize(pointBetweenP2andP3.To(p1)) * TRIANGLE_SIZE_MULITPLIER;
+            p2 += Vector2.Normalize(pointBetweenP1andP3.To(p2)) * TRIANGLE_SIZE_MULITPLIER;
+            p3 += Vector2.Normalize(pointBetweenP1andP2.To(p3)) * TRIANGLE_SIZE_MULITPLIER;
+
             // 1st line: p1->p2
             // 2nd line: p2->p3
             // 3rd line: p1->p3
@@ -330,6 +338,7 @@ namespace IngameScript
             sp.Position = spritePosition;
             sp.RotationOrScale = rotation;
             df.Add(sp);
+            //DrawPixel(sp.Position, Color.Red, df);
 
             // second triangle
             var BtoD = B.To(triangleAnchor);
@@ -343,6 +352,19 @@ namespace IngameScript
             sp.Position = spritePosition;
             sp.RotationOrScale = rotation;
             df.Add(sp);
+            //DrawPixel(sp.Position, Color.Blue, df);
+        }
+
+        void DrawPixel(Vector2? pos, Color c, MySpriteDrawFrame df)
+        {
+            if (pos != null)
+            {
+                PixelSprite.Position = pos;
+                var tmp = PixelSprite.Color;
+                PixelSprite.Color = c;
+                df.Add(PixelSprite);
+                PixelSprite.Color = tmp;
+            }
         }
 
         IEnumerator GatherInitialShipInfo()
