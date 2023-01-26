@@ -140,20 +140,32 @@ namespace IngameScript
 
                 }
                 Echo("Rendering...");
-                rotEl += 0.003f;
+                rotEl += 0.008f;
                 rotEl = MathHelper.WrapAngle(rotEl);
-                rotOl += 0.002f;
+                rotOl += 0.005f;
                 rotOl = MathHelper.WrapAngle(rotOl);
-                Vector3 forward = Vector3.Forward * 10;
+                Vector3 forward = Vector3.Forward * 8;
                 Mesh m = new Mesh();
                 m.Color = Color.White;
                 m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
                 m.Triangles = GridBlock.ExampleCubeSTriangles;
                 m.Vertices = GridBlock.ExampleCubeSVertices.ToArray();
+                float[] colorTriangles = new float[m.Triangles.Length / 3];
+                bool yes = true;
+                float rate = 235 / colorTriangles.Length / 2;
+                float color = 20;
+                for (int i = 0; i < colorTriangles.Length; i++)
+                {
+                    if (yes)
+                    {
+                        color += rate;
+                    }
+                    yes = !yes;
+                    colorTriangles[i] = color;
+                }
                 Echo($"Rendering {m.Vertices.Count()} vertices");
                 foreach (var context in _textPanelRenderingContexts)
                 {
-                    float w = 20;
                     foreach (var lcd in context.Value)
                     {
                         var df = lcd.TextPanel.DrawFrame();
@@ -166,46 +178,31 @@ namespace IngameScript
                         //PixelSprite.Color = Color.Red;
                         //PixelSprite.Color = Color.White;
 
-                        var vertices = m.Vertices.ToList();
+                        var vertices = m.Vertices;
                         var triangles = m.Triangles;
-                        //foreach (var item in vertices)
-                        //{
-                        //    var proj = context.Key.ProjectLocalPoint(item + forward);
-                        //    if (proj != null)
-                        //    {
-                        //        PixelSprite.Position = proj;
-                        //        df.Add(PixelSprite);
-                        //    }
-                        //}
-                        // order in which to render the triangles
 
-                        MyTuple<int, float>[] triangleDistances = new MyTuple<int, float>[m.Triangles.Length/3];
+                        MyTuple<int, float, float>[] triangleDistances = new MyTuple<int, float, float>[m.Triangles.Length/3];
                         for (int i = 0; i < m.Triangles.Length; i+=3)
                         {
-                            triangleDistances[i / 3] = new MyTuple<int, float>(i, new Vector3(vertices[triangles[i]].Length(), vertices[triangles[i + 1]].Length(), vertices[triangles[i + 2]].Length()).Min());
+                            triangleDistances[i / 3] = new MyTuple<int, float, float>(i, new Vector3((vertices[triangles[i]] + forward).LengthSquared(), (vertices[triangles[i+1]] + forward).LengthSquared(), (vertices[triangles[i+2]] + forward).LengthSquared()).Max(), colorTriangles[i / 3]);
                         }
-                        bool yes = true;
                         triangleDistances = triangleDistances.OrderByDescending(x => x.Item2).ToArray();
                         for (int i = 0; i < triangleDistances.Length; i++)
                         {
-                            if (yes)
+                            float w = triangleDistances[i].Item3;
+                            var renderedVertices = new Vector2?[3];
+
+                            for (int v = 0; v < 3; v++)
                             {
-                                w += 30;
+                                renderedVertices[v] = context.Key.ProjectLocalPoint(vertices[triangles[triangleDistances[i].Item1 + v]] + forward);
                             }
-                            yes = !yes;
-                            var firstVertex = vertices[triangles[triangleDistances[i].Item1]] + forward;
-                            var secondVertex = vertices[triangles[triangleDistances[i].Item1 + 1]] + forward;
-                            var thirdVertex = vertices[triangles[triangleDistances[i].Item1 + 2]] + forward;
 
-                            var projectedPoint1 = context.Key.ProjectLocalPoint(firstVertex);
-                            var projectedPoint2 = context.Key.ProjectLocalPoint(secondVertex);
-                            var projectedPoint3 = context.Key.ProjectLocalPoint(thirdVertex);
-
-                            if (projectedPoint1 != null && projectedPoint2 != null && projectedPoint3 != null)
+                            if (!renderedVertices.Any(x => x == null))
                             {
-                                if (GetPointsOrientation((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3) == 2)
+                                var screenPoints = renderedVertices.Select(x => (Vector2)x).ToArray();
+                                if (GetPointsOrientation(screenPoints[0], screenPoints[1], screenPoints[2]) == 2)
                                 {
-                                    FillArbitraryTriangle((Vector2)projectedPoint1, (Vector2)projectedPoint2, (Vector2)projectedPoint3, Color.FromNonPremultiplied((int)w, (int)w, (int)w, 255), df);
+                                    FillArbitraryTriangle(screenPoints[0], screenPoints[1], screenPoints[2], Color.FromNonPremultiplied((int)w, (int)w, (int)w, 255), df);
                                 }
                             }
 
@@ -313,36 +310,36 @@ namespace IngameScript
             AtoB = A.To(B);
             AtoBNormalized = Vector2.Normalize(AtoB);
             // anchor for the two right angled triangles
-            Vector2 D;
+            Vector2 triangleAnchor;
             Vector2 AtoC = A.To(C);
             float dotProduct = Vector2.Dot(AtoC, AtoBNormalized);
-            D = A + AtoBNormalized * dotProduct;
+            triangleAnchor = A + AtoBNormalized * dotProduct;
             float baseRot = MathHelper.Pi / 2;
-            float GAP_ELIMINATOR = 1f;
 
             // first triangle
-            Vector2 AtoD = A.To(D);
-            float rotation = GetRotation(AtoD) + baseRot;
-            Vector2 spriteSize = AtoC;
-            spriteSize.Rotate(-(GetRotation(AtoD) + baseRot));
+            Vector2 AtoTriangleAnchor = A.To(triangleAnchor);
+            Vector2 localLineEliminatorC = C + Vector2.Normalize(AtoTriangleAnchor);
+            float rotation = GetRotation(AtoTriangleAnchor) + baseRot;
+            //Vector2 spriteSize = AtoC;
+            Vector2 spriteSize = A.To(localLineEliminatorC);
+            spriteSize.Rotate(-(GetRotation(AtoTriangleAnchor) + baseRot));
             spriteSize *= -1;
-            spriteSize *= GAP_ELIMINATOR;
             sp.Size = spriteSize;
+            //spriteSize += (Vector2.Normalize(spriteSize) * 2) * new Vector2(1, 0);
             Vector2 spritePosition = A + AtoC / 2 - new Vector2(spriteSize.X / 2, 0);
             sp.Position = spritePosition;
             sp.RotationOrScale = rotation;
             df.Add(sp);
 
             // second triangle
-            var BtoD = B.To(D);
-            rotation = GetRotation(AtoD) + baseRot;
+            var BtoD = B.To(triangleAnchor);
+            rotation = GetRotation(AtoTriangleAnchor) + baseRot;
             Vector2 BtoC = B.To(C);
             spriteSize = BtoC;
-            spriteSize.Rotate(-(GetRotation(AtoD) + baseRot));
+            spriteSize.Rotate(-(GetRotation(AtoTriangleAnchor) + baseRot));
             spriteSize *= -1;
             sp.Size = spriteSize;
-            spritePosition = B + D.To(C) / 2 + BtoD / 2 - new Vector2(spriteSize.X / 2, 0);
-            spritePosition.X -= spritePosition.X * (GAP_ELIMINATOR - 1);
+            spritePosition = B + triangleAnchor.To(C) / 2 + BtoD / 2 - new Vector2(spriteSize.X / 2, 0);
             sp.Position = spritePosition;
             sp.RotationOrScale = rotation;
             df.Add(sp);
