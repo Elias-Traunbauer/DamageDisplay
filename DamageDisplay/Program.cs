@@ -38,7 +38,7 @@ namespace IngameScript
         int maxLoopCount = 100;
         string INI_SECTION_HEADER = "Damage Display";
         string currentID = "main";
-        const float TRIANGLE_SIZE_MULITPLIER = 0.7f;
+        const float TRIANGLE_SIZE_MULITPLIER = 0.3f;
 
         public Program()
         {
@@ -245,14 +245,15 @@ namespace IngameScript
             return az;
         }
 
-        MySprite DrawLine(Vector2 start, Vector2 end)
+        MySprite DrawLine(Vector2 start, Vector2 end, Color c)
         {
             MySprite sp = new MySprite();
+            sp.Color = c;
             sp.Type = SpriteType.TEXTURE;
             sp.Data = "SquareSimple";
             Vector2 dir = end - start;
             float len = dir.Length();
-            Vector2 size = new Vector2(1, len);
+            Vector2 size = new Vector2(2f, len);
             dir.Normalize();
             sp.Position = start + dir * (len / 2);
             sp.Size = size;
@@ -327,7 +328,7 @@ namespace IngameScript
             // first triangle
             Vector2 AtoTriangleAnchor = A.To(triangleAnchor);
             // magic vector to make ugly line between the two triangles, drawn here, disappear
-            Vector2 localLineEliminatorC = C + Vector2.Normalize(AtoTriangleAnchor) / 2+ Vector2.Normalize(triangleAnchor.To(C)) * 1.5f;
+            Vector2 localLineEliminatorC = C + Vector2.Normalize(AtoTriangleAnchor) / 2/*+ Vector2.Normalize(triangleAnchor.To(C)) * 1.5f*/;
             float rotation = GetRotation(AtoTriangleAnchor) + baseRot;
             Vector2 lineEliminatorA = A + Vector2.Normalize(triangleAnchor.To(A)) * 1.5f;
             Vector2 spriteSize = lineEliminatorA.To(localLineEliminatorC) + Vector2.Normalize(triangleAnchor.To(C));
@@ -340,7 +341,7 @@ namespace IngameScript
             df.Add(sp);
 
             // second triangle, basically like before, but now mirrored
-            localLineEliminatorC = C + Vector2.Normalize(B.To(triangleAnchor)) / 2 + Vector2.Normalize(triangleAnchor.To(C)) * 1.5f;
+            localLineEliminatorC = C + Vector2.Normalize(B.To(triangleAnchor)) / 2/* + Vector2.Normalize(triangleAnchor.To(C)) * 1.5f*/;
             rotation = GetRotation(AtoTriangleAnchor) + baseRot;
             Vector2 lineEliminatorB = B + Vector2.Normalize(triangleAnchor.To(B)) * 1.5f;
             Vector2 BtoC = lineEliminatorB.To(localLineEliminatorC);
@@ -545,14 +546,14 @@ namespace IngameScript
         };
 
         public static List<Vector3> ExampleCubeSVertices = new List<Vector3>() {
-            new Vector3(BlockSizeHalf, BlockSizeHalf * 2, BlockSizeHalf),    // 0
-            new Vector3(-BlockSizeHalf, BlockSizeHalf * 2, BlockSizeHalf),   // 1
+            new Vector3(BlockSizeHalf, BlockSizeHalf * 0.2f, BlockSizeHalf),    // 0
+            new Vector3(-BlockSizeHalf, BlockSizeHalf * 0.2f, BlockSizeHalf),   // 1
             new Vector3(BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),   // 2
-            new Vector3(BlockSizeHalf, BlockSizeHalf * 2, -BlockSizeHalf),   // 3
+            new Vector3(BlockSizeHalf, BlockSizeHalf * 0.2f, -BlockSizeHalf),   // 3
             new Vector3(-BlockSizeHalf, -BlockSizeHalf, BlockSizeHalf),  // 4
             new Vector3(-BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf), // 5
             new Vector3(BlockSizeHalf, -BlockSizeHalf, -BlockSizeHalf),  // 6
-            new Vector3(-BlockSizeHalf, BlockSizeHalf, -BlockSizeHalf)   // 7
+            new Vector3(-BlockSizeHalf, BlockSizeHalf * 2, -BlockSizeHalf)   // 7
         };
 
         public static int[] ExampleCubeSTriangles = new int[]
