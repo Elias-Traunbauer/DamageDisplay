@@ -35,7 +35,6 @@ namespace IngameScript
         int loopCount = 0;
         float rotEl = 0;
         float rotOl = 0;
-        float localVertexMultiplier;
         int maxLoopCount = 100;
         string INI_SECTION_HEADER = "Damage Display";
         string currentID = "main";
@@ -119,11 +118,24 @@ namespace IngameScript
             if (!_seu.RuntimeUpdate(argument, updateSource)) return;
         }
 
+        private void DrawLogo(MySpriteDrawFrame df, IMyTextSurface lcd)
+        {
+            df.Add(new MySprite()
+            {
+                Type = SpriteType.TEXT,
+                Data = "trauni's \ndamage \ndisplay",
+                FontId = "Monospace",
+                Position = new Vector2(lcd.SurfaceSize.X / 2, 10),
+                RotationOrScale = 2,
+                Alignment = TextAlignment.CENTER
+            });
+        }
+
         IEnumerator StartSystem()
         {
             int id = _seu.StartCoroutine(GatherInitialShipInfo());
             //yield return new WaitForNextTick();
-            yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), 60000, 1000, () => { Echo("Script start timeouted"); return false; });
+            yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), 120000, 1000, () => { Echo("Script start timeouted"); return false; });
 
             // start main coroutine
             _seu.StartCoroutine(Main());
@@ -131,6 +143,7 @@ namespace IngameScript
 
         IEnumerator GatherInitialShipInfo()
         {
+            var origin = _seu.CurrentCubeGrid.Min + _seu.CurrentCubeGrid.Min.To(_seu.CurrentCubeGrid.Max) / 2;
             var lcd = _textPanelRenderingContexts.First().Value.First().TextPanel;
             var df = lcd.DrawFrame();
             df.Add(new MySprite()
@@ -147,7 +160,6 @@ namespace IngameScript
             Vector3 gridSize = _seu.CurrentCubeGrid.Max - _seu.CurrentCubeGrid.Min;
             // maxFarOut * x = 2.4f -> 2.4f / maxFarOut = x
             float maxFarOut = gridSize.Max() / 2;
-            localVertexMultiplier = 2.4f / maxFarOut;
             _gridBlocks = new Dictionary<Vector3, GridBlock>();
             for (int x = 0; x < gridSize.X; x++)
             {
@@ -157,7 +169,7 @@ namespace IngameScript
                     {
                         var pos = _seu.CurrentCubeGrid.Min + new Vector3I(x, y, z);
                         var slim = _seu.CurrentCubeGrid.GetCubeBlock(pos);
-                        _gridBlocks.Add(pos, new GridBlock() { Position = pos, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
+                        _gridBlocks.Add(pos - origin, new GridBlock() { Position = pos - origin, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
 
                         loopCount++;
                         if (loopCount >= maxLoopCount)
@@ -167,11 +179,13 @@ namespace IngameScript
                     }
                 }
             }
-            List<Vector3> vertices = new List<Vector3>();
-            List<Triangle> triangles = new List<Triangle>();
+            Dictionary<Vector3, int> vertices = new Dictionary<Vector3, int>();
+            HashSet<Triangle> triangles = new HashSet<Triangle>();
+            
             float cnt = 0;
-            var rendaBlocks = _gridBlocks.Where(x => x.Value.Exists);
+            var rendaBlocks = _gridBlocks.Where(x => x.Value.Exists).OrderBy(x => x.Key.LinearIndex());
             var all = rendaBlocks.Count();
+            int indexOfVertex = 0;
             foreach (var item in rendaBlocks)
             {
                 cnt++;
@@ -179,22 +193,36 @@ namespace IngameScript
                 for (int i = 0; i < GridBlock.ExampleCubeVertices.Count; i++)
                 {
                     var vertex = GridBlock.ExampleCubeVertices[i] + item.Key;
-                    if (!vertices.Contains(vertex))
+                    
+                    if (!vertices.ContainsKey(vertex))
                     {
-                        vertices.Add(vertex);
+                        vertices.Add(vertex, indexOfVertex);
+                        indexOfVertex++;
                     }
-                    vertexIndices[i] = vertices.IndexOf(vertex);
-                    loopCount += 50;
+                    vertexIndices[i] = vertices[vertex];
+
+                    loopCount += vertices.Count;
                     if (loopCount >= maxLoopCount)
                     {
                         yield return new WaitForNextTick();
                         df = lcd.DrawFrame();
+                        DrawLogo(df, lcd);
+                        var surfSize = lcd.SurfaceSize;
                         df.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXT,
-                            Data = "Loading... " + (all / cnt) * 10 + "%",
-                            Position = new Vector2(20, 20),
-                            RotationOrScale = 1.2f
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(15, surfSize.Y / 2),
+                            Size = new Vector2(surfSize.X - 30, 32),
+                            Color = Color.Gray
+                        });
+                        df.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(16, surfSize.Y / 2),
+                            Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
+                            Color = Color.Green
                         });
                         df.Dispose();
                     }
@@ -202,28 +230,38 @@ namespace IngameScript
                 for (int t = 0; t < GridBlock.ExampleCubeTriangles.Length; t+=3)
                 {
                     var triangle = new Triangle() { vertices = new int[] { vertexIndices[GridBlock.ExampleCubeTriangles[t]], vertexIndices[GridBlock.ExampleCubeTriangles[t + 1]], vertexIndices[GridBlock.ExampleCubeTriangles[t + 2]] } };
-                    if (!triangles.Contains(triangle))
-                    {
-                        triangles.Add(triangle);
-                    }
-                    loopCount+=50;
+
+                    triangles.Add(triangle);
+
+                    loopCount+=triangles.Count;
                     if (loopCount >= maxLoopCount)
                     {
                         yield return new WaitForNextTick();
                         df = lcd.DrawFrame();
+                        DrawLogo(df, lcd);
+                        var surfSize = lcd.SurfaceSize;
                         df.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXT,
-                            Data = "Loading... " + (all / cnt) * 10 + "%",
-                            Position = new Vector2(20, 20),
-                            RotationOrScale = 1.2f
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(15, surfSize.Y / 2),
+                            Size = new Vector2(surfSize.X - 30, 32),
+                            Color = Color.Gray
+                        });
+                        df.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(16, surfSize.Y / 2),
+                            Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
+                            Color = Color.Green
                         });
                         df.Dispose();
                     }
                 }
             }
             mesh = new Mesh();
-            mesh.Vertices = vertices.ToArray();
+            mesh.Vertices = vertices.OrderBy(x => x.Value).Select(x => x.Key).ToArray();
             mesh.Triangles = triangles.SelectMany(x => x.vertices).ToArray();
             Echo("Gathered all blocks");
         }
@@ -238,12 +276,11 @@ namespace IngameScript
                 rotEl = MathHelper.WrapAngle(rotEl); 
                 rotOl += 0.005f;
                 rotOl = MathHelper.WrapAngle(rotOl);
-                Vector3 forward = Vector3.Forward * 30;
                 Mesh m = mesh;
                 m.Color = Color.White;
-                m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(0);
-                //m.Triangles = GridBlock.ExampleCubeSTriangles;
-                //m.Vertices = GridBlock.ExampleCubeSVertices.ToArray();
+                m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
+
+                Vector3 forward = Vector3.Forward * m.Vertices.Select(x => x.Length()).Max() * 2f;
                 float[] colorTriangles = new float[m.Triangles.Length / 3];
                 bool yes = true;
                 float rate = 235 / colorTriangles.Length / 2;
@@ -260,25 +297,21 @@ namespace IngameScript
                 Echo($"Rendering {m.Vertices.Count()} vertices");
                 foreach (var context in _textPanelRenderingContexts)
                 {
+                    var multi = context.Key.LCDBlockSize.X > context.Key.LCDBlockSize.Y ? context.Key.LCDBlockSize.Y : context.Key.LCDBlockSize.X;
+                    multi *= 2;
                     foreach (var lcd in context.Value)
                     {
                         var df = lcd.TextPanel.DrawFrame();
-                        // triangle test
-                        //Vector2 p1 = new Vector2(30 + rotEl * 10, 80 + rotEl * 20);
-                        //Vector2 p2 = new Vector2(130 + rotEl * 20, 100);
-                        //Vector2 p3 = new Vector2(100, 50 + rotEl * 30 + 40);
-                        //FillArbitraryTriangle(p1, p2, p3, Color.White, df);
-                        //PixelSprite.Size = new Vector2(4, 4);
-                        //PixelSprite.Color = Color.Red;
-                        //PixelSprite.Color = Color.White;
-
-                        var vertices = m.Vertices;
-                        var triangles = m.Triangles;
 
                         MyTuple<int, float, float>[] triangleDistances = new MyTuple<int, float, float>[m.Triangles.Length/3];
                         for (int i = 0; i < m.Triangles.Length; i+=3)
                         {
-                            triangleDistances[i / 3] = new MyTuple<int, float, float>(i, new Vector3((vertices[triangles[i]] + forward).LengthSquared(), (vertices[triangles[i+1]] + forward).LengthSquared(), (vertices[triangles[i+2]] + forward).LengthSquared()).Max(), colorTriangles[i / 3]);
+                            triangleDistances[i / 3] = new MyTuple<int, float, float>(i, new Vector3((m.GetAt(m.Triangles[i]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+1]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+2]) * multi + forward).LengthSquared()).Max(), colorTriangles[i / 3]);
+                            loopCount++;
+                            if (loopCount >= maxLoopCount)
+                            {
+                                yield return new WaitForNextTick();
+                            }
                         }
                         triangleDistances = triangleDistances.OrderByDescending(x => x.Item2).ToArray();
                         for (int i = 0; i < triangleDistances.Length; i++)
@@ -288,7 +321,7 @@ namespace IngameScript
 
                             for (int v = 0; v < 3; v++)
                             {
-                                renderedVertices[v] = context.Key.ProjectLocalPoint(vertices[triangles[triangleDistances[i].Item1 + v]] + forward);
+                                renderedVertices[v] = context.Key.ProjectLocalPoint(m.GetAt(m.Triangles[triangleDistances[i].Item1 + v]) + forward);
                             }
 
                             if (!renderedVertices.Any(x => x == null))
@@ -468,30 +501,54 @@ namespace IngameScript
         }
     }
 
+    public class Vertex
+    {
+        public Vector3 Position;
+        public int Index;
+
+        public Vertex(Vector3 position, int index)
+        {
+            Position = position;
+            Index = index;
+        }
+
+        public override int GetHashCode()
+        {
+            return Position.GetHashCode();
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is Vertex))
+            {
+                throw new ArgumentException($"{nameof(obj)} has to be instance of {nameof(Vertex)}");
+            }
+            return Position.Equals((obj as Vertex).Position);
+        }
+
+        public override string ToString()
+        {
+            return Position.ToString() + " Index: " + Index;
+        }
+    }
+
     public class Mesh
     {
         public Color Color { get; set; }
         private Vector3[] _vertices;
-        private Vector3[] _verticesRot;
 
         public Vector3[] Vertices
         {
             get
             {
-                if (verticesHash + rotationHash != _vertices.GetHashCode() + _rotation.GetHashCode())
-                {
-                    _verticesRot = new Vector3[_vertices.Length];
-                    verticesHash = _vertices.GetHashCode();
-                    rotationHash = _rotation.GetHashCode();
-
-                    for (int i = 0; i < _vertices.Count(); i++)
-                    {
-                        _verticesRot[i] = Vector3.Transform(_vertices[i], _rotation);
-                    }
-                }
-                return _verticesRot;
+                return _vertices;
             }
             set { _vertices = value; }
+        }
+
+        public Vector3 GetAt(int i)
+        {
+            return Vector3.Transform(_vertices[i], _rotation);
         }
 
         private int[] _triangles;
@@ -512,19 +569,16 @@ namespace IngameScript
                 _rotation = value;
             }
         }
-
-        private int verticesHash = -1;
-        private int rotationHash = -1;
-
     }
 
     public class Triangle
     {
         public int[] vertices;
+        // compares two of the 3 vertices
         public override bool Equals(object obj)
         {
-            int firstCounter = 0;
-            int secondCounter = 0;
+            int firstCounter = -1;
+            int secondCounter = -1;
             return vertices.OrderBy(x => x).Aggregate((x, y) => { firstCounter += 2; return x * firstCounter + y * firstCounter + 1; }) == (obj as Triangle).vertices.OrderBy(x => x).Aggregate((x, y) => { secondCounter += 2; return x * secondCounter + y * secondCounter + 1; });
         }
 
@@ -563,7 +617,7 @@ namespace IngameScript
         public bool Exists { get; set; }
         public bool IsOutside;
 
-        public static readonly float BlockSize = 2.5f;
+        public static readonly float BlockSize = 1f;
         public static readonly float BlockSizeHalf = BlockSize / 2f;
 
         public bool IsAir
