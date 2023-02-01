@@ -22,6 +22,7 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
+        DebugAPI Draw;
         readonly SEUtils _seu;
         readonly MyIni _ini;
         Dictionary<Vector3, GridBlock> _gridBlocks;
@@ -43,14 +44,16 @@ namespace IngameScript
         const string DISPLAY_ID_KEY = "Display_ID";
         const string DISPLAY_ID_DEFAULT = "main";
         const string END_COMMENT = "The PB with a certain ID displays only on LCD's with that ID.\nPlease configure";
-        const float TRIANGLE_SIZE_MULITPLIER = 0.3f;
+        const float TRIANGLE_SIZE_MULITPLIER = 0f; // 0.3f
+        int renderedBlocks = 0;
         Mesh _shipMesh;
 
         public Program()
         {
+            Draw = new DebugAPI(this);
             _seu = new SEUtils(this);
             _ini = new MyIni();
-
+            Draw.RemoveAll();
             // check if PB has valid ini config
             string pbCustomData = _seu.CurrentProgrammableBlock.CustomData;
             if (_ini.TryParse(pbCustomData) && !string.IsNullOrEmpty(pbCustomData))
@@ -122,6 +125,7 @@ namespace IngameScript
         public void Main(string argument, UpdateType updateSource)
         {
             _iterationCount = 0;
+            Echo(Runtime.LastRunTimeMs + "ms");
             if (!_seu.RuntimeUpdate(argument, updateSource)) return;
         }
 
@@ -142,7 +146,7 @@ namespace IngameScript
         {
             int id = _seu.StartCoroutine(GatherInitialShipInfo());
             //yield return new WaitForNextTick();
-            yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), 120000, 1000, () => { Echo("Script start timeouted"); _seu.StopCoroutine(id); return false; });
+            yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), /*120000*/-1, 1000, () => { Echo("Script start timeouted"); _seu.StopCoroutine(id); return false; });
             // start main coroutine
             _seu.StartCoroutine(Main());
         }
@@ -171,7 +175,7 @@ namespace IngameScript
                         var slim = _seu.CurrentCubeGrid.GetCubeBlock(pos);
 
                         if (_seu.CurrentCubeGrid.CubeExists(pos)) 
-                            _gridBlocks.Add(pos - origin, new GridBlock() { Position = slim != null ? slim.Position - origin : pos - origin, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
+                            _gridBlocks.Add(pos - origin, new GridBlock() { OriginalGridPosition = pos, Position = slim != null ? slim.Position - origin : pos - origin, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
 
                         _iterationCount++;
                         if (_iterationCount >= _maxIterationCount)
@@ -183,36 +187,36 @@ namespace IngameScript
             }
             Echo("Flood fill started");
             // flood fill to find outside blocks
-            var all = gridSize.X * gridSize.Y * gridSize.Z - _gridBlocks.Count;
+            var all = gridSize.X * gridSize.Y * gridSize.Z;
             float cnt = 0;
-            Vector3 floodFillStartPos = _seu.CurrentCubeGrid.Min;
             HashSet<Vector3> outsidePoses = new HashSet<Vector3>();
             HashSet<Vector3> alreadyChecked = new HashSet<Vector3>();
             Queue<Vector3> queuePosToCheck = new Queue<Vector3>();
-            queuePosToCheck.Enqueue(floodFillStartPos);
+            queuePosToCheck.Enqueue(_seu.CurrentCubeGrid.Min);
             while (queuePosToCheck.Any())
             {
                 var posToCheck = queuePosToCheck.Dequeue();
-                if (alreadyChecked.Any(x => x == posToCheck) || !(posToCheck.X >= _seu.CurrentCubeGrid.Min.X && posToCheck.Y >= _seu.CurrentCubeGrid.Min.Y && posToCheck.Z >= _seu.CurrentCubeGrid.Min.Z) && (posToCheck.X <= _seu.CurrentCubeGrid.Max.X && posToCheck.Y <= _seu.CurrentCubeGrid.Max.Y && posToCheck.Z <= _seu.CurrentCubeGrid.Max.Z))
+
+                if (alreadyChecked.Any(x => x == posToCheck) || !IsInBounds(_seu.CurrentCubeGrid.Min, _seu.CurrentCubeGrid.Max, posToCheck))
                 {
                     continue;
                 }
                 alreadyChecked.Add(posToCheck);
-                cnt++;
-
-                if (_gridBlocks.ContainsKey(posToCheck))
+                
+                if (_gridBlocks.ContainsKey(posToCheck - origin))
                 {
-                    outsidePoses.Add(posToCheck);
+                    cnt++;
+                    outsidePoses.Add(posToCheck - origin);
+                    //Draw.DrawOBB(new MyOrientedBoundingBoxD(_seu.CurrentCubeGrid.GridIntegerToWorld((Vector3I)posToCheck), new Vector3D(1f, 1f, 1f), Quaternion.CreateFromRotationMatrix(_seu.CurrentCubeGrid.WorldMatrix.GetOrientation())), Color.Red, DebugAPI.Style.Wireframe, 0.02f, 20, true);
                 }
                 else
                 {
-                    Echo("Min: " + _seu.CurrentCubeGrid.Min + " Max: " + _seu.CurrentCubeGrid.Max + "");
+                    cnt+= 0.3f;
                     foreach (var item in DirectNeighbours(posToCheck))
                     {
-                        Echo("pos: " + item);
                         queuePosToCheck.Enqueue(item);
                         Echo(cnt + "/" + all);
-                        Echo(alreadyChecked.Count() + " sdaadd");
+
                         _iterationCount += alreadyChecked.Count;
                         if (_iterationCount >= _maxIterationCount)
                         {
@@ -267,7 +271,7 @@ namespace IngameScript
                     df.Dispose();
                 }
             }
-            
+            renderedBlocks = outsidePoses.Count;
             Dictionary<Vector3, int> vertices = new Dictionary<Vector3, int>();
             HashSet<Triangle> triangles = new HashSet<Triangle>();
             
@@ -357,6 +361,11 @@ namespace IngameScript
             Echo("Gathered all blocks");
         }
 
+        bool IsInBounds(Vector3 start, Vector3 end, Vector3 vector)
+        {
+            return vector.X >= start.X && vector.Y >= start.Y && vector.Z >= start.Z &&
+                vector.X <= end.X && vector.Y <= end.Y && vector.Z <= end.Z;
+        }
 
         IEnumerator Main()
         {
@@ -386,6 +395,7 @@ namespace IngameScript
                     colorTriangles[i] = color;
                 }
                 Echo($"Rendering {m.Vertices.Count()} vertices");
+                float frameTime = 0;
                 foreach (var context in _textPanelRenderingContexts)
                 {
                     var multi = context.Key.LCDBlockSize.X > context.Key.LCDBlockSize.Y ? context.Key.LCDBlockSize.Y : context.Key.LCDBlockSize.X;
@@ -393,15 +403,35 @@ namespace IngameScript
                     foreach (var lcd in context.Value)
                     {
                         var df = lcd.TextPanel.DrawFrame();
+                        df.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = renderedBlocks + "/" + _gridBlocks.Count + " blocks rendered",
+                            RotationOrScale = 0.7f,
+                            Color = Color.Gray,
+                            Position = new Vector2(10, 10)
+                        });
 
                         MyTuple<int, float, float>[] triangleDistances = new MyTuple<int, float, float>[m.Triangles.Length/3];
                         for (int i = 0; i < m.Triangles.Length; i+=3)
                         {
                             triangleDistances[i / 3] = new MyTuple<int, float, float>(i, new Vector3((m.GetAt(m.Triangles[i]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+1]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+2]) * multi + forward).LengthSquared()).Max(), colorTriangles[i / 3]);
-                            _iterationCount++;
+                            _iterationCount += 10;
                             if (_iterationCount >= _maxIterationCount)
                             {
                                 yield return new WaitForNextTick();
+                                frameTime += (float)Runtime.TimeSinceLastRun.TotalMilliseconds;
+                                if (Runtime.TimeSinceLastRun.TotalMilliseconds > 0.5d)
+                                {
+                                    try
+                                    {
+                                        throw new ArgumentException();
+                                    }
+                                    catch (Exception)
+                                    {
+
+                                    }
+                                }
                             }
                         }
                         triangleDistances = triangleDistances.OrderByDescending(x => x.Item2).ToArray();
@@ -428,14 +458,26 @@ namespace IngameScript
                             if (_iterationCount >= _maxIterationCount)
                             {
                                 yield return new WaitForNextTick();
+                                frameTime += (float)Runtime.TimeSinceLastRun.TotalMilliseconds;
+                                if (Runtime.TimeSinceLastRun.TotalMilliseconds > 0.5d)
+                                {
+                                    try
+                                    {
+                                        throw new ArgumentException();
+                                    }
+                                    catch (Exception)
+                                    {
+
+                                    }
+                                }
                             }
                         }
                         df.Dispose();
                         Echo($"Rendered {m.Vertices.Count()} vertices onto {lcd.TextPanel.CustomName}");
                     }
                 }
-
-                yield return new WaitForNextTick();
+                Echo("Frame time: " + frameTime);
+                yield return new WaitForMilliseconds(1000);
             }
         }
 
@@ -702,6 +744,7 @@ namespace IngameScript
 
     public class GridBlock
     {
+        public Vector3 OriginalGridPosition;
         public Vector3 Position { get; set; }
         public IMySlimBlock SlimBlock { get; set; }
         public IMyTerminalBlock TerminalBlock { get; set; }
@@ -826,5 +869,98 @@ namespace IngameScript
         {
             return Position.GetHashCode();
         }
+    }
+
+    public class DebugAPI
+    {
+        public readonly bool ModDetected;
+
+        public void RemoveDraw() => _removeDraw?.Invoke(_pb);
+        Action<IMyProgrammableBlock> _removeDraw;
+
+        public void RemoveAll() => _removeAll?.Invoke(_pb);
+        Action<IMyProgrammableBlock> _removeAll;
+
+        public void Remove(int id) => _remove?.Invoke(_pb, id);
+        Action<IMyProgrammableBlock, int> _remove;
+
+        public int DrawPoint(Vector3D origin, Color color, float radius = 0.2f, float seconds = DefaultSeconds, bool? onTop = null) => _point?.Invoke(_pb, origin, color, radius, seconds, onTop ?? _defaultOnTop) ?? -1;
+        Func<IMyProgrammableBlock, Vector3D, Color, float, float, bool, int> _point;
+
+        public int DrawLine(Vector3D start, Vector3D end, Color color, float thickness = DefaultThickness, float seconds = DefaultSeconds, bool? onTop = null) => _line?.Invoke(_pb, start, end, color, thickness, seconds, onTop ?? _defaultOnTop) ?? -1;
+        Func<IMyProgrammableBlock, Vector3D, Vector3D, Color, float, float, bool, int> _line;
+
+        public int DrawAABB(BoundingBoxD bb, Color color, Style style = Style.Wireframe, float thickness = DefaultThickness, float seconds = DefaultSeconds, bool? onTop = null) => _aabb?.Invoke(_pb, bb, color, (int)style, thickness, seconds, onTop ?? _defaultOnTop) ?? -1;
+        Func<IMyProgrammableBlock, BoundingBoxD, Color, int, float, float, bool, int> _aabb;
+
+        public int DrawOBB(MyOrientedBoundingBoxD obb, Color color, Style style = Style.Wireframe, float thickness = DefaultThickness, float seconds = DefaultSeconds, bool? onTop = null) => _obb?.Invoke(_pb, obb, color, (int)style, thickness, seconds, onTop ?? _defaultOnTop) ?? -1;
+        Func<IMyProgrammableBlock, MyOrientedBoundingBoxD, Color, int, float, float, bool, int> _obb;
+
+        public int DrawSphere(BoundingSphereD sphere, Color color, Style style = Style.Wireframe, float thickness = DefaultThickness, int lineEveryDegrees = 15, float seconds = DefaultSeconds, bool? onTop = null) => _sphere?.Invoke(_pb, sphere, color, (int)style, thickness, lineEveryDegrees, seconds, onTop ?? _defaultOnTop) ?? -1;
+        Func<IMyProgrammableBlock, BoundingSphereD, Color, int, float, int, float, bool, int> _sphere;
+
+        public int DrawMatrix(MatrixD matrix, float length = 1f, float thickness = DefaultThickness, float seconds = DefaultSeconds, bool? onTop = null) => _matrix?.Invoke(_pb, matrix, length, thickness, seconds, onTop ?? _defaultOnTop) ?? -1;
+        Func<IMyProgrammableBlock, MatrixD, float, float, float, bool, int> _matrix;
+
+        public int DrawGPS(string name, Vector3D origin, Color? color = null, float seconds = DefaultSeconds) => _gps?.Invoke(_pb, name, origin, color, seconds) ?? -1;
+        Func<IMyProgrammableBlock, string, Vector3D, Color?, float, int> _gps;
+
+        public int PrintHUD(string message, Font font = Font.Debug, float seconds = 2) => _printHUD?.Invoke(_pb, message, font.ToString(), seconds) ?? -1;
+        Func<IMyProgrammableBlock, string, string, float, int> _printHUD;
+
+        public void PrintChat(string message, string sender = null, Color? senderColor = null, Font font = Font.Debug) => _chat?.Invoke(_pb, message, sender, senderColor, font.ToString());
+        Action<IMyProgrammableBlock, string, string, Color?, string> _chat;
+
+        public void DeclareAdjustNumber(out int id, double initial, double step = 0.05, Input modifier = Input.Control, string label = null) => id = _adjustNumber?.Invoke(_pb, initial, step, modifier.ToString(), label) ?? -1;
+        Func<IMyProgrammableBlock, double, double, string, string, int> _adjustNumber;
+
+        public double GetAdjustNumber(int id, double noModDefault = 1) => _getAdjustNumber?.Invoke(_pb, id) ?? noModDefault;
+        Func<IMyProgrammableBlock, int, double> _getAdjustNumber;
+
+        public int GetTick() => _tick?.Invoke() ?? -1;
+        Func<int> _tick;
+
+        public enum Style { Solid, Wireframe, SolidAndWireframe }
+        public enum Input { MouseLeftButton, MouseRightButton, MouseMiddleButton, MouseExtraButton1, MouseExtraButton2, LeftShift, RightShift, LeftControl, RightControl, LeftAlt, RightAlt, Tab, Shift, Control, Alt, Space, PageUp, PageDown, End, Home, Insert, Delete, Left, Up, Right, Down, D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, NumPad0, NumPad1, NumPad2, NumPad3, NumPad4, NumPad5, NumPad6, NumPad7, NumPad8, NumPad9, Multiply, Add, Separator, Subtract, Decimal, Divide, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12 }
+        public enum Font { Debug, White, Red, Green, Blue, DarkBlue }
+
+        const float DefaultThickness = 0.02f;
+        const float DefaultSeconds = -1;
+
+        IMyProgrammableBlock _pb;
+        bool _defaultOnTop;
+
+        public DebugAPI(MyGridProgram program, bool drawOnTopDefault = false)
+        {
+            if (program == null)
+                throw new Exception("Pass `this` into the API, not null.");
+
+            _defaultOnTop = drawOnTopDefault;
+            _pb = program.Me;
+
+            var methods = _pb.GetProperty("DebugAPI")?.As<IReadOnlyDictionary<string, Delegate>>()?.GetValue(_pb);
+            if (methods != null)
+            {
+                Assign(out _removeAll, methods["RemoveAll"]);
+                Assign(out _removeDraw, methods["RemoveDraw"]);
+                Assign(out _remove, methods["Remove"]);
+                Assign(out _point, methods["Point"]);
+                Assign(out _line, methods["Line"]);
+                Assign(out _aabb, methods["AABB"]);
+                Assign(out _obb, methods["OBB"]);
+                Assign(out _sphere, methods["Sphere"]);
+                Assign(out _matrix, methods["Matrix"]);
+                Assign(out _gps, methods["GPS"]);
+                Assign(out _printHUD, methods["HUDNotification"]);
+                Assign(out _chat, methods["Chat"]);
+                Assign(out _adjustNumber, methods["DeclareAdjustNumber"]);
+                Assign(out _getAdjustNumber, methods["GetAdjustNumber"]);
+                Assign(out _tick, methods["Tick"]);
+                RemoveAll();
+                ModDetected = true;
+            }
+        }
+
+        void Assign<T>(out T field, object method) => field = (T)method;
     }
 }
