@@ -22,48 +22,55 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        SEUtils _seu;
-        MyIni _ini;
+        readonly SEUtils _seu;
+        readonly MyIni _ini;
         Dictionary<Vector3, GridBlock> _gridBlocks;
-        Dictionary<TextPanelRenderingContext, List<LCDWithRotation>> _textPanelRenderingContexts = new Dictionary<TextPanelRenderingContext, List<LCDWithRotation>>();
-        MySprite PixelSprite = new MySprite()
-        {
-            Data = "SquareSimple",
-            Color = Color.White,
-            Size = new Vector2(1, 1)
-        };
-        int loopCount = 0;
-        float rotEl = 0;
-        float rotOl = 0;
-        int maxLoopCount = 100;
-        string INI_SECTION_HEADER = "Damage Display";
-        string currentID = "main";
+        readonly Dictionary<TextPanelRenderingContext, List<LCDWithRotation>> _textPanelRenderingContexts = new Dictionary<TextPanelRenderingContext, List<LCDWithRotation>>();
+        //MySprite _pixelSpriteTemplate = new MySprite()
+        //{
+        //    Data = "SquareSimple",
+        //    Color = Color.White,
+        //    Size = new Vector2(1, 1)
+        //};
+        int _iterationCount = 0;
+        float _tempRotElevation = 0;
+        float _tempRotAzimuth = 0;
+        readonly int _maxIterationCount = 100;
+        readonly string _currentDisplayId = "main";
+        const string INI_SECTION_HEADER = "Damage Display";
+        const string INI_SECTION_COMMENT = "Configuration for damage display controller";
+        const string SELECTION_KEYWORD = "damage_display";
+        const string DISPLAY_ID_KEY = "Display_ID";
+        const string DISPLAY_ID_DEFAULT = "main";
+        const string END_COMMENT = "The PB with a certain ID displays only on LCD's with that ID.\nPlease configure";
         const float TRIANGLE_SIZE_MULITPLIER = 0.3f;
-        Mesh mesh;
+        Mesh _shipMesh;
 
         public Program()
         {
             _seu = new SEUtils(this);
             _ini = new MyIni();
-            Echo("FWD: " + Vector3.Forward + "RWD: " + Vector3.Right + "UPWD: " + Vector3.Up);
 
-            if (_ini.TryParse(_seu.CurrentProgrammableBlock.CustomData) && !string.IsNullOrEmpty(_seu.CurrentProgrammableBlock.CustomData))
+            // check if PB has valid ini config
+            string pbCustomData = _seu.CurrentProgrammableBlock.CustomData;
+            if (_ini.TryParse(pbCustomData) && !string.IsNullOrEmpty(pbCustomData))
             {
                 if (_ini.ContainsSection(INI_SECTION_HEADER))
                 {
-                    currentID = _ini.Get(INI_SECTION_HEADER, "Display_ID").ToString();
+                    _currentDisplayId = _ini.Get(INI_SECTION_HEADER, DISPLAY_ID_KEY).ToString();
                 }
             }
             else
             {
                 _ini.AddSection(INI_SECTION_HEADER);
-                _ini.SetSectionComment(INI_SECTION_HEADER, "Configuration for damage display controller");
-                _ini.Set(INI_SECTION_HEADER, "Display_ID", "main");
-                _ini.EndComment = "The PB with a certain ID displays only on LCD's with that ID.\nPlease configure";
+                _ini.SetSectionComment(INI_SECTION_HEADER, INI_SECTION_COMMENT);
+                _ini.Set(INI_SECTION_HEADER, DISPLAY_ID_KEY, DISPLAY_ID_DEFAULT);
+                _ini.EndComment = END_COMMENT;
                 _seu.CurrentProgrammableBlock.CustomData = _ini.ToString();
                 throw new InvalidOperationException("Please configure the PB in the custom data");
             }
             _ini.Clear();
+
             // Setup
             List<IMyTextPanel> allLCDsOnGrid = new List<IMyTextPanel>();
             // Get all lcd's on grid
@@ -77,20 +84,20 @@ namespace IngameScript
                     if (_ini.ContainsSection(INI_SECTION_HEADER))
                     {
                         string vectorString = _ini.Get(INI_SECTION_HEADER, "View_rotation").ToString();
-                        string ID = _ini.Get(INI_SECTION_HEADER, "Display_ID").ToString();
+                        string ID = _ini.Get(INI_SECTION_HEADER, DISPLAY_ID_KEY).ToString();
                         vectorString = vectorString.Substring(1, vectorString.Length - 2);
                         string[] numbers = vectorString.Split(' ').Select(x => x.Split(':')[1]).ToArray();
-                        if (ID == currentID)
+                        if (ID == _currentDisplayId)
                         {
                             lcds.Add(new LCDWithRotation() { TextPanel = item, Rotation = new Vector3(MathHelper.ToRadians(float.Parse(numbers[0])), MathHelper.ToRadians(float.Parse(numbers[1])), MathHelper.ToRadians(float.Parse(numbers[2]))) });
                         }
                     }
                 }
-                else if (item.CustomData.ToLower().Contains("damage_display"))
+                else if (item.CustomData.ToLower().Contains(SELECTION_KEYWORD))
                 {
                     _ini.AddSection(INI_SECTION_HEADER);
-                    _ini.SetSectionComment(INI_SECTION_HEADER, "Configuration for damage display");
-                    _ini.Set(INI_SECTION_HEADER, "Display_ID", "main");
+                    _ini.SetSectionComment(INI_SECTION_HEADER, INI_SECTION_COMMENT);
+                    _ini.Set(INI_SECTION_HEADER, DISPLAY_ID_KEY, DISPLAY_ID_DEFAULT);
                     _ini.Set(INI_SECTION_HEADER, "Display_type", "3D");
                     _ini.SetComment(INI_SECTION_HEADER, "Display_type", "Options: [3D|2D]");
                     _ini.Set(INI_SECTION_HEADER, "View_rotation", new Vector3().ToString());
@@ -103,18 +110,18 @@ namespace IngameScript
             _textPanelRenderingContexts = uniqueLcdTypes.Select(x => new { CTX = new TextPanelRenderingContext(x.First().TextPanel, Vector3D.Backward), LCDs = x.ToList() }).ToDictionary(x => x.CTX, y => y.LCDs);
             allLCDsOnGrid = null;
 
-            foreach (var item in _textPanelRenderingContexts.SelectMany(x => x.Value))
+            foreach (var textPanelRenderingContexts in _textPanelRenderingContexts.SelectMany(x => x.Value))
             {
-                item.TextPanel.ContentType = ContentType.SCRIPT;
-                item.TextPanel.ScriptBackgroundColor = Color.Black;
+                textPanelRenderingContexts.TextPanel.ContentType = ContentType.SCRIPT;
+                textPanelRenderingContexts.TextPanel.ScriptBackgroundColor = Color.Black;
             }
-            // Start everything
+
             _seu.StartCoroutine(StartSystem());
         }
 
         public void Main(string argument, UpdateType updateSource)
         {
-            loopCount = 0;
+            _iterationCount = 0;
             if (!_seu.RuntimeUpdate(argument, updateSource)) return;
         }
 
@@ -123,7 +130,7 @@ namespace IngameScript
             df.Add(new MySprite()
             {
                 Type = SpriteType.TEXT,
-                Data = "trauni's \ndamage \ndisplay",
+                Data = "trauni's\ndamage\ndisplay",
                 FontId = "Monospace",
                 Position = new Vector2(lcd.SurfaceSize.X / 2, 10),
                 RotationOrScale = 2,
@@ -135,8 +142,7 @@ namespace IngameScript
         {
             int id = _seu.StartCoroutine(GatherInitialShipInfo());
             //yield return new WaitForNextTick();
-            yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), 120000, 1000, () => { Echo("Script start timeouted"); return false; });
-
+            yield return new WaitForConditionMet(() => !_seu.CheckCoroutineRunning(id), 120000, 1000, () => { Echo("Script start timeouted"); _seu.StopCoroutine(id); return false; });
             // start main coroutine
             _seu.StartCoroutine(Main());
         }
@@ -146,13 +152,7 @@ namespace IngameScript
             var origin = _seu.CurrentCubeGrid.Min + _seu.CurrentCubeGrid.Min.To(_seu.CurrentCubeGrid.Max) / 2;
             var lcd = _textPanelRenderingContexts.First().Value.First().TextPanel;
             var df = lcd.DrawFrame();
-            df.Add(new MySprite()
-            {
-                Type = SpriteType.TEXT,
-                Data = "Loading...",
-                Position = new Vector2(20, 20),
-                RotationOrScale = 1.2f
-            });
+
             yield return new WaitForNextTick();
             //try { throw new InvalidOperationException("break my point"); } catch (Exception) { }
             Echo("Started gathering all blocks");
@@ -169,30 +169,119 @@ namespace IngameScript
                     {
                         var pos = _seu.CurrentCubeGrid.Min + new Vector3I(x, y, z);
                         var slim = _seu.CurrentCubeGrid.GetCubeBlock(pos);
-                        _gridBlocks.Add(pos - origin, new GridBlock() { Position = pos - origin, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
 
-                        loopCount++;
-                        if (loopCount >= maxLoopCount)
+                        if (_seu.CurrentCubeGrid.CubeExists(pos)) 
+                            _gridBlocks.Add(pos - origin, new GridBlock() { Position = slim != null ? slim.Position - origin : pos - origin, SlimBlock = slim, TerminalBlock = slim as IMyTerminalBlock, Exists = _seu.CurrentCubeGrid.CubeExists(pos) }); ;
+
+                        _iterationCount++;
+                        if (_iterationCount >= _maxIterationCount)
                         {
                             yield return new WaitForNextTick();
                         }
                     }
                 }
             }
+            Echo("Flood fill started");
+            // flood fill to find outside blocks
+            var all = gridSize.X * gridSize.Y * gridSize.Z - _gridBlocks.Count;
+            float cnt = 0;
+            Vector3 floodFillStartPos = _seu.CurrentCubeGrid.Min;
+            HashSet<Vector3> outsidePoses = new HashSet<Vector3>();
+            HashSet<Vector3> alreadyChecked = new HashSet<Vector3>();
+            Queue<Vector3> queuePosToCheck = new Queue<Vector3>();
+            queuePosToCheck.Enqueue(floodFillStartPos);
+            while (queuePosToCheck.Any())
+            {
+                var posToCheck = queuePosToCheck.Dequeue();
+                if (alreadyChecked.Any(x => x == posToCheck) || !(posToCheck.X >= _seu.CurrentCubeGrid.Min.X && posToCheck.Y >= _seu.CurrentCubeGrid.Min.Y && posToCheck.Z >= _seu.CurrentCubeGrid.Min.Z) && (posToCheck.X <= _seu.CurrentCubeGrid.Max.X && posToCheck.Y <= _seu.CurrentCubeGrid.Max.Y && posToCheck.Z <= _seu.CurrentCubeGrid.Max.Z))
+                {
+                    continue;
+                }
+                alreadyChecked.Add(posToCheck);
+                cnt++;
+
+                if (_gridBlocks.ContainsKey(posToCheck))
+                {
+                    outsidePoses.Add(posToCheck);
+                }
+                else
+                {
+                    Echo("Min: " + _seu.CurrentCubeGrid.Min + " Max: " + _seu.CurrentCubeGrid.Max + "");
+                    foreach (var item in DirectNeighbours(posToCheck))
+                    {
+                        Echo("pos: " + item);
+                        queuePosToCheck.Enqueue(item);
+                        Echo(cnt + "/" + all);
+                        Echo(alreadyChecked.Count() + " sdaadd");
+                        _iterationCount += alreadyChecked.Count;
+                        if (_iterationCount >= _maxIterationCount)
+                        {
+                            yield return new WaitForNextTick();
+                            df = lcd.DrawFrame();
+                            DrawLogo(df, lcd);
+                            var surfSize = lcd.SurfaceSize;
+                            df.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = "SquareSimple",
+                                Position = new Vector2(15, surfSize.Y / 2),
+                                Size = new Vector2(surfSize.X - 30, 32),
+                                Color = Color.Gray
+                            });
+                            df.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = "SquareSimple",
+                                Position = new Vector2(16, surfSize.Y / 2),
+                                Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
+                                Color = Color.Green
+                            });
+                            df.Dispose();
+                        }
+                    }
+                }
+                _iterationCount++;
+                if (_iterationCount >= _maxIterationCount)
+                {
+                    Echo(cnt + "/" + all);
+                    yield return new WaitForNextTick();
+                    df = lcd.DrawFrame();
+                    DrawLogo(df, lcd);
+                    var surfSize = lcd.SurfaceSize;
+                    df.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(15, surfSize.Y / 2),
+                        Size = new Vector2(surfSize.X - 30, 32),
+                        Color = Color.Gray
+                    });
+                    df.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(16, surfSize.Y / 2),
+                        Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
+                        Color = Color.Green
+                    });
+                    df.Dispose();
+                }
+            }
+            
             Dictionary<Vector3, int> vertices = new Dictionary<Vector3, int>();
             HashSet<Triangle> triangles = new HashSet<Triangle>();
             
-            float cnt = 0;
-            var rendaBlocks = _gridBlocks.Where(x => x.Value.Exists).OrderBy(x => x.Key.LinearIndex());
-            var all = rendaBlocks.Count();
+            cnt = 0;
+            //var rendaBlocks = _gridBlocks.Where(x => x.Value.Exists);
+            all = outsidePoses.Count();
             int indexOfVertex = 0;
-            foreach (var item in rendaBlocks)
+            foreach (var item in outsidePoses)
             {
                 cnt++;
                 int[] vertexIndices = new int[GridBlock.ExampleCubeVertices.Count()];
                 for (int i = 0; i < GridBlock.ExampleCubeVertices.Count; i++)
                 {
-                    var vertex = GridBlock.ExampleCubeVertices[i] + item.Key;
+                    var vertex = GridBlock.ExampleCubeVertices[i] + item;
                     
                     if (!vertices.ContainsKey(vertex))
                     {
@@ -201,8 +290,8 @@ namespace IngameScript
                     }
                     vertexIndices[i] = vertices[vertex];
 
-                    loopCount += vertices.Count;
-                    if (loopCount >= maxLoopCount)
+                    _iterationCount += vertices.Count;
+                    if (_iterationCount >= _maxIterationCount)
                     {
                         yield return new WaitForNextTick();
                         df = lcd.DrawFrame();
@@ -233,8 +322,8 @@ namespace IngameScript
 
                     triangles.Add(triangle);
 
-                    loopCount+=triangles.Count;
-                    if (loopCount >= maxLoopCount)
+                    _iterationCount+=triangles.Count;
+                    if (_iterationCount >= _maxIterationCount)
                     {
                         yield return new WaitForNextTick();
                         df = lcd.DrawFrame();
@@ -260,9 +349,11 @@ namespace IngameScript
                     }
                 }
             }
-            mesh = new Mesh();
-            mesh.Vertices = vertices.OrderBy(x => x.Value).Select(x => x.Key).ToArray();
-            mesh.Triangles = triangles.SelectMany(x => x.vertices).ToArray();
+            _shipMesh = new Mesh
+            {
+                Vertices = vertices.OrderBy(x => x.Value).Select(x => x.Key).ToArray(),
+                Triangles = triangles.SelectMany(x => x.vertices).ToArray()
+            };
             Echo("Gathered all blocks");
         }
 
@@ -272,14 +363,14 @@ namespace IngameScript
             while (true)
             {
                 Echo("Rendering...");
-                rotEl += 0.02f;
-                rotEl = MathHelper.WrapAngle(rotEl); 
-                rotOl += 0.005f;
-                rotOl = MathHelper.WrapAngle(rotOl);
-                Mesh m = mesh;
+                _tempRotElevation += 0.02f;
+                _tempRotElevation = MathHelper.WrapAngle(_tempRotElevation); 
+                _tempRotAzimuth += 0.005f;
+                _tempRotAzimuth = MathHelper.WrapAngle(_tempRotAzimuth);
+                Mesh m = _shipMesh;
                 m.Color = Color.White;
-                m.Rotation = Matrix.CreateRotationY(rotEl) * Matrix.CreateRotationX(rotOl);
-
+                m.Rotation = Matrix.CreateRotationY(_tempRotElevation) * Matrix.CreateRotationX(_tempRotAzimuth * 0);
+                
                 Vector3 forward = Vector3.Forward * m.Vertices.Select(x => x.Length()).Max() * 2f;
                 float[] colorTriangles = new float[m.Triangles.Length / 3];
                 bool yes = true;
@@ -307,8 +398,8 @@ namespace IngameScript
                         for (int i = 0; i < m.Triangles.Length; i+=3)
                         {
                             triangleDistances[i / 3] = new MyTuple<int, float, float>(i, new Vector3((m.GetAt(m.Triangles[i]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+1]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+2]) * multi + forward).LengthSquared()).Max(), colorTriangles[i / 3]);
-                            loopCount++;
-                            if (loopCount >= maxLoopCount)
+                            _iterationCount++;
+                            if (_iterationCount >= _maxIterationCount)
                             {
                                 yield return new WaitForNextTick();
                             }
@@ -333,8 +424,8 @@ namespace IngameScript
                                 }
                             }
 
-                            loopCount++;
-                            if (loopCount >= maxLoopCount)
+                            _iterationCount++;
+                            if (_iterationCount >= _maxIterationCount)
                             {
                                 yield return new WaitForNextTick();
                             }
@@ -372,30 +463,34 @@ namespace IngameScript
             return az;
         }
 
-        MySprite DrawLine(Vector2 start, Vector2 end, Color c)
-        {
-            MySprite sp = new MySprite();
-            sp.Color = c;
-            sp.Type = SpriteType.TEXTURE;
-            sp.Data = "SquareSimple";
-            Vector2 dir = end - start;
-            float len = dir.Length();
-            Vector2 size = new Vector2(2f, len);
-            dir.Normalize();
-            sp.Position = start + dir * (len / 2);
-            sp.Size = size;
-            float az, el;
-            Vector3.GetAzimuthAndElevation(new Vector3(-dir.X, 0, dir.Y), out az, out el);
-            sp.RotationOrScale = az;
-            return sp;
-        }
+        //MySprite DrawLine(Vector2 start, Vector2 end, Color c)
+        //{
+        //    MySprite sp = new MySprite
+        //    {
+        //        Color = c,
+        //        Type = SpriteType.TEXTURE,
+        //        Data = "SquareSimple"
+        //    };
+        //    Vector2 dir = end - start;
+        //    float len = dir.Length();
+        //    Vector2 size = new Vector2(2f, len);
+        //    dir.Normalize();
+        //    sp.Position = start + dir * (len / 2);
+        //    sp.Size = size;
+        //    float az, el;
+        //    Vector3.GetAzimuthAndElevation(new Vector3(-dir.X, 0, dir.Y), out az, out el);
+        //    sp.RotationOrScale = az;
+        //    return sp;
+        //}
 
         void FillArbitraryTriangle(Vector2 p1, Vector2 p2, Vector2 p3, Color c, MySpriteDrawFrame df)
         {
-            MySprite sp = new MySprite();
-            sp.Type = SpriteType.TEXTURE;
-            sp.Data = "RightTriangle";
-            sp.Color = c;
+            MySprite sp = new MySprite
+            {
+                Type = SpriteType.TEXTURE,
+                Data = "RightTriangle",
+                Color = c
+            };
 
             // make triangle larger to beat the evil ugly lines
             var pointBetweenP1andP2 = p1 + p1.To(p2) / 2;
@@ -483,16 +578,26 @@ namespace IngameScript
             df.Add(sp);
         }
 
-        void DrawPixel(Vector2? pos, Color c, MySpriteDrawFrame df)
+        //void DrawPixel(Vector2? pos, Color c, MySpriteDrawFrame df)
+        //{
+        //    if (pos != null)
+        //    {
+        //        _pixelSpriteTemplate.Position = pos;
+        //        var tmp = _pixelSpriteTemplate.Color;
+        //        _pixelSpriteTemplate.Color = c;
+        //        df.Add(_pixelSpriteTemplate);
+        //        _pixelSpriteTemplate.Color = tmp;
+        //    }
+        //}
+
+        IEnumerable<Vector3> DirectNeighbours(Vector3 pos)
         {
-            if (pos != null)
-            {
-                PixelSprite.Position = pos;
-                var tmp = PixelSprite.Color;
-                PixelSprite.Color = c;
-                df.Add(PixelSprite);
-                PixelSprite.Color = tmp;
-            }
+            yield return pos + Vector3.Forward;
+            yield return pos + Vector3.Backward;
+            yield return pos + Vector3.Right;
+            yield return pos + Vector3.Left;
+            yield return pos + Vector3.Up;
+            yield return pos + Vector3.Down;
         }
 
         public void Save()
@@ -607,9 +712,11 @@ namespace IngameScript
         {
             if (LastMeshHash == GetHashCode() || rot != rotation)
             {
-                _mesh = new Mesh();
-                _mesh.Rotation = rotation;
-                _mesh.Vertices = ExampleCubeVertices.ToArray();
+                _mesh = new Mesh
+                {
+                    Rotation = rotation,
+                    Vertices = ExampleCubeVertices.ToArray()
+                };
                 rot = rotation;
             }
             return _mesh;
