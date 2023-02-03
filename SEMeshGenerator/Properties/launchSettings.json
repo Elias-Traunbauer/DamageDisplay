@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "SEMeshGenerator": {
+      "commandName": "Project",
+      "commandLineArgs": "thrusters/hydrogen_thruster_small.ply",
+      "workingDirectory": "C:\\Users\\trauni\\source\\repos\\DamageDisplay\\SEMeshGenerator\\models"
+    }
+  }
+}

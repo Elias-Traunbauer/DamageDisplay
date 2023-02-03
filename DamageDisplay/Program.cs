@@ -23,6 +23,7 @@ namespace IngameScript
     partial class Program : MyGridProgram
     {
         DebugAPI Draw;
+        BlockMeshes _blockMeshes;
         readonly SEUtils _seu;
         readonly MyIni _ini;
         Dictionary<Vector3, GridBlock> _gridBlocks;
@@ -51,6 +52,7 @@ namespace IngameScript
         public Program()
         {
             Draw = new DebugAPI(this);
+            _blockMeshes = new BlockMeshes();
             _seu = new SEUtils(this);
             _ini = new MyIni();
             Draw.RemoveAll();
@@ -125,7 +127,7 @@ namespace IngameScript
         public void Main(string argument, UpdateType updateSource)
         {
             _iterationCount = 0;
-            Echo(Runtime.LastRunTimeMs + "ms");
+            //Echo(Runtime.LastRunTimeMs + "ms");
             if (!_seu.RuntimeUpdate(argument, updateSource)) return;
         }
 
@@ -160,17 +162,21 @@ namespace IngameScript
             yield return new WaitForNextTick();
             //try { throw new InvalidOperationException("break my point"); } catch (Exception) { }
             Echo("Started gathering all blocks");
-
             Vector3 gridSize = _seu.CurrentCubeGrid.Max - _seu.CurrentCubeGrid.Min;
+
+            var all = gridSize.X * gridSize.Y * gridSize.Z;
+
             // maxFarOut * x = 2.4f -> 2.4f / maxFarOut = x
             float maxFarOut = gridSize.Max() / 2;
             _gridBlocks = new Dictionary<Vector3, GridBlock>();
+            var cnt = 0f;
             for (int x = 0; x < gridSize.X; x++)
             {
                 for (int y = 0; y < gridSize.Y; y++)
                 {
                     for (int z = 0; z < gridSize.Z; z++)
                     {
+                        cnt++;
                         var pos = _seu.CurrentCubeGrid.Min + new Vector3I(x, y, z);
                         var slim = _seu.CurrentCubeGrid.GetCubeBlock(pos);
 
@@ -181,14 +187,41 @@ namespace IngameScript
                         if (_iterationCount >= _maxIterationCount)
                         {
                             yield return new WaitForNextTick();
+                            df = lcd.DrawFrame();
+                            DrawLogo(df, lcd);
+                            var surfSize = lcd.SurfaceSize;
+                            df.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = "SquareSimple",
+                                Position = new Vector2(15, surfSize.Y / 2),
+                                Size = new Vector2(surfSize.X - 30, 32),
+                                Color = Color.Gray
+                            });
+                            df.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = "SquareSimple",
+                                Position = new Vector2(16, surfSize.Y / 2),
+                                Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
+                                Color = Color.Green
+                            });
+                            df.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXT,
+                                Data = "1/3 Getting blocks",
+                                Position = new Vector2(16, surfSize.Y / 2 + 35),
+                                RotationOrScale = 1
+                            });
+                            df.Dispose();
                         }
                     }
                 }
             }
             Echo("Flood fill started");
             // flood fill to find outside blocks
-            var all = gridSize.X * gridSize.Y * gridSize.Z;
-            float cnt = 0;
+            cnt = 0f;
+            all = gridSize.X * gridSize.Y * gridSize.Z;
             HashSet<Vector3> outsidePoses = new HashSet<Vector3>();
             HashSet<Vector3> alreadyChecked = new HashSet<Vector3>();
             Queue<Vector3> queuePosToCheck = new Queue<Vector3>();
@@ -240,6 +273,14 @@ namespace IngameScript
                                 Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
                                 Color = Color.Green
                             });
+                            df.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXT,
+                                Data = "2/3 Optimizing blocks",
+                                Position = new Vector2(16, surfSize.Y / 2 + 35),
+                                FontId = "Monospace",
+                                RotationOrScale = 1
+                            });
                             df.Dispose();
                         }
                     }
@@ -267,6 +308,14 @@ namespace IngameScript
                         Position = new Vector2(16, surfSize.Y / 2),
                         Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
                         Color = Color.Green
+                    });
+                    df.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = "2/3 Optimizing blocks",
+                        Position = new Vector2(16, surfSize.Y / 2 + 35),
+                        FontId = "Monospace",
+                        RotationOrScale = 1
                     });
                     df.Dispose();
                 }
@@ -317,6 +366,14 @@ namespace IngameScript
                             Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
                             Color = Color.Green
                         });
+                        df.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "3/3 Building mesh",
+                            Position = new Vector2(16, surfSize.Y / 2 + 35),
+                            FontId = "Monospace",
+                            RotationOrScale = 1
+                        });
                         df.Dispose();
                     }
                 }
@@ -349,6 +406,14 @@ namespace IngameScript
                             Size = new Vector2((surfSize.X - 32) * (cnt / all), 30),
                             Color = Color.Green
                         });
+                        df.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "3/3 Building mesh",
+                            Position = new Vector2(16, surfSize.Y / 2 + 35),
+                            FontId = "Monospace",
+                            RotationOrScale = 1
+                        });
                         df.Dispose();
                     }
                 }
@@ -358,7 +423,7 @@ namespace IngameScript
                 Vertices = vertices.OrderBy(x => x.Value).Select(x => x.Key).ToArray(),
                 Triangles = triangles.SelectMany(x => x.vertices).ToArray()
             };
-            Echo("Gathered all blocks");
+            Echo("Setup finished");
         }
 
         bool IsInBounds(Vector3 start, Vector3 end, Vector3 vector)
@@ -376,7 +441,22 @@ namespace IngameScript
                 _tempRotElevation = MathHelper.WrapAngle(_tempRotElevation); 
                 _tempRotAzimuth += 0.005f;
                 _tempRotAzimuth = MathHelper.WrapAngle(_tempRotAzimuth);
-                Mesh m = _shipMesh;
+                //Mesh m = _shipMesh;
+                Mesh m = new Mesh();
+                m.Vertices = _blockMeshes.hydrogen_thruster_small_vertices.Select(x => x / 1.25f).ToArray();
+                m.Triangles = _blockMeshes.hydrogen_thruster_small_triangles;
+
+                //try
+                //{
+                //    throw new ArgumentException();
+                //}
+                //catch (Exception)
+                //{
+
+                //}
+
+                //m.Vertices = GridBlock.ExampleCubeVertices.ToArray();
+                //m.Triangles = GridBlock.ExampleCubeTriangles;
                 m.Color = Color.White;
                 m.Rotation = Matrix.CreateRotationY(_tempRotElevation) * Matrix.CreateRotationX(_tempRotAzimuth * 0);
                 
@@ -415,8 +495,8 @@ namespace IngameScript
                         MyTuple<int, float, float>[] triangleDistances = new MyTuple<int, float, float>[m.Triangles.Length/3];
                         for (int i = 0; i < m.Triangles.Length; i+=3)
                         {
-                            triangleDistances[i / 3] = new MyTuple<int, float, float>(i, new Vector3((m.GetAt(m.Triangles[i]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+1]) * multi + forward).LengthSquared(), (m.GetAt(m.Triangles[i+2]) * multi + forward).LengthSquared()).Max(), colorTriangles[i / 3]);
-                            _iterationCount += 10;
+                            triangleDistances[i / 3] = new MyTuple<int, float, float>(i, new Vector3((m.GetRotatedVertexAt(m.Triangles[i]) * multi + forward).LengthSquared(), (m.GetRotatedVertexAt(m.Triangles[i+1]) * multi + forward).LengthSquared(), (m.GetRotatedVertexAt(m.Triangles[i+2]) * multi + forward).LengthSquared()).Max(), colorTriangles[i / 3]);
+                            _iterationCount += 1;
                             if (_iterationCount >= _maxIterationCount)
                             {
                                 yield return new WaitForNextTick();
@@ -442,19 +522,18 @@ namespace IngameScript
 
                             for (int v = 0; v < 3; v++)
                             {
-                                renderedVertices[v] = context.Key.ProjectLocalPoint(m.GetAt(m.Triangles[triangleDistances[i].Item1 + v]) + forward);
+                                renderedVertices[v] = context.Key.ProjectLocalPoint(m.GetRotatedVertexAt(m.Triangles[triangleDistances[i].Item1 + v]) + forward);
                             }
 
                             if (!renderedVertices.Any(x => x == null))
                             {
-                                var screenPoints = renderedVertices.Select(x => (Vector2)x).ToArray();
-                                if (GetPointsOrientation(screenPoints[0], screenPoints[1], screenPoints[2]) == 2)
+                                if (GetPointsOrientation(renderedVertices[0].Value, renderedVertices[1].Value, renderedVertices[2].Value) == 1)
                                 {
-                                    FillArbitraryTriangle(screenPoints[0], screenPoints[1], screenPoints[2], Color.FromNonPremultiplied((int)w, (int)w, (int)w, 255), df);
+                                    FillArbitraryTriangle(renderedVertices[0].Value, renderedVertices[1].Value, renderedVertices[2].Value, Color.FromNonPremultiplied((int)w, (int)w, (int)w, 255), df);
                                 }
                             }
 
-                            _iterationCount++;
+                            _iterationCount+= 10;
                             if (_iterationCount >= _maxIterationCount)
                             {
                                 yield return new WaitForNextTick();
@@ -477,7 +556,8 @@ namespace IngameScript
                     }
                 }
                 Echo("Frame time: " + frameTime);
-                yield return new WaitForMilliseconds(1000);
+                yield return new WaitForNextTick();
+                //yield return new WaitForMilliseconds(1000);
             }
         }
 
@@ -693,7 +773,7 @@ namespace IngameScript
             set { _vertices = value; }
         }
 
-        public Vector3 GetAt(int i)
+        public Vector3 GetRotatedVertexAt(int i)
         {
             return Vector3.Transform(_vertices[i], _rotation);
         }
@@ -816,18 +896,18 @@ namespace IngameScript
 
         public static int[] ExampleCubeTriangles = new int[]
         {
-            0,2,4,
-            4,1,0,
-            2,0,3,
-            3,6,2,
-            3,7,5,
-            5,6,3,
-            7,1,4,
-            4,5,7,
-            6,5,4,
-            4,2,6,
-            0,1,7,
-            7,3,0
+            2,4,0,
+            1,0,4,
+            0,3,2,
+            6,2,3,
+            7,5,3,
+            6,3,5,
+            1,4,7,
+            5,7,4,
+            5,4,6,
+            2,6,4,
+            1,7,0,
+            3,0,7
         };
 
         public static List<Vector3> ExampleCubeSVertices = new List<Vector3>() {
