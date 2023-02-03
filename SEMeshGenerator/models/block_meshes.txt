@@ -1,0 +1,9 @@
+﻿hydrogen thruster small
+hydrogen thruster large
+atmosphere thruster small
+atmosphere thruster large
+ion thruster small
+ion thruster large
+connector
+door
+sliding_door
