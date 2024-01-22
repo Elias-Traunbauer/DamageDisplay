@@ -30,16 +30,3 @@ Welcome to DamageDisplay, an in-game script for Space Engineers, created by Elia
 
 - Once integrated, the script will automatically display damage on your ship in real-time. Further instructions for customization and optimization will be provided in the script documentation.
 
-## Contributing
-
-Your contributions to improve or expand the script are welcome. Whether it's new features, bug fixes, or enhancements, feel free to contribute.
-
-## License
-
-This script is distributed under an open-source license. Check the `LICENSE` file for more details.
-
-## Contact
-
-Elias Traunbauer - [Your Contact Information]
-
-Project Link: [https://github.com/Elias-Traunbauer/DamageDisplay](https://github.com/Elias-Traunbauer/DamageDisplay)
